@@ -110,18 +110,12 @@ tr:hover td{background:#f9f8ff}
   </div>
   <div class="header-right" id="fechaHdr"></div>
 </div>
-<div class="nav" style="justify-content:space-between">
-  <div style="display:flex">
-    <button class="nav-btn active" onclick="showTab('tablero',this)">🏠 Tablero</button>
-    <button class="nav-btn" onclick="showTab('conciliacion',this)">📋 Conciliación</button>
-    <button class="nav-btn" onclick="showTab('egresos',this)">💸 Egresos</button>
-    <button class="nav-btn" onclick="showTab('progpagos',this)">📆 Prog. de Pagos</button>
-    <button class="nav-btn" onclick="showTab('presupuesto',this)">📊 Presupuesto</button>
-  </div>
-  <div style="display:flex;align-items:center;gap:8px;padding:0 16px">
-    <button id="gas-btn-nav" onclick="gasCargarTodo()" style="padding:6px 16px;font-size:12px;font-weight:700;background:#0ea5e9;color:#fff;border:none;border-radius:6px;cursor:pointer">🔄 Sincronizar</button>
-    <span id="gas-nav-status" style="font-size:11px;color:#9a97b5"></span>
-  </div>
+<div class="nav">
+  <button class="nav-btn active" onclick="showTab('tablero',this)">🏠 Tablero</button>
+  <button class="nav-btn" onclick="showTab('conciliacion',this)">📋 Conciliación</button>
+  <button class="nav-btn" onclick="showTab('egresos',this)">💸 Egresos</button>
+  <button class="nav-btn" onclick="showTab('progpagos',this)">📆 Prog. de Pagos</button>
+  <button class="nav-btn" onclick="showTab('presupuesto',this)">📊 Presupuesto</button>
 </div>
 <div class="main">
 <div id="tab-tablero">
@@ -3847,154 +3841,6 @@ function exportarCSV(){
   const blob=new Blob([h+'\n'+rows.join('\n')],{type:'text/csv'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);
   a.download='facturacion_sistemas_globales_estados.csv';a.click();
-}
-<script>
-// ══════════════════════════════════════════════════════════════
-// GOOGLE SHEETS SYNC — Tablero Contable Sistemas Globales
-// ══════════════════════════════════════════════════════════════
-var GAS_URL = 'https://script.google.com/macros/s/AKfycbw41fymqtn-ZpfUwNdyhfAZzIfI1pUFtqRYrzf6z9Y4XlyosCzczCn2a-i3DjWOrDk61w/exec';
-
-function gasCargarTodo() {
-  var btn = document.getElementById('gas-btn-nav');
-  var nav = document.getElementById('gas-nav-status');
-  if (btn) { btn.disabled = true; btn.textContent = '⏳ Cargando...'; }
-  if (nav) { nav.textContent = '⏳ conectando...'; nav.style.color = '#fbbf24'; }
-  fetch(GAS_URL + '?tab=_datos&v=' + Date.now())
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      if (!data.ok) throw new Error(data.error || 'Error');
-      var fac = data.facturacion || [];
-      var pp  = data.programacion || [];
-      if (fac.length) gasAplicarFacturacion(fac);
-      if (pp.length)  gasAplicarProgramacion(pp);
-      var msg = '✅ ' + fac.length + ' fact · ' + pp.length + ' pagos · ' + new Date().toLocaleTimeString('es-CO');
-      if (nav) { nav.textContent = msg; nav.style.color = '#86efac'; }
-      if (btn) { btn.disabled = false; btn.textContent = '🔄 Sincronizar'; }
-    })
-    .catch(function(err) {
-      if (nav) { nav.textContent = '❌ ' + err.message; nav.style.color = '#fca5a5'; }
-      if (btn) { btn.disabled = false; btn.textContent = '🔄 Sincronizar'; }
-    });
-}
-
-// Headers Sheet: factura, concepto, tipo, cliente, base, iva, total, estado, mes, banco, retencion, capital_trabajo
-function gasAplicarFacturacion(registros) {
-  function n(v) { return parseFloat(String(v||0).replace(/[^0-9.-]/g,''))||0; }
-  var nuevos = registros.map(function(r) {
-    return [
-      String(r.factura||''), String(r.concepto||''),
-      String(r.tipo||'PUBLICIDAD').toUpperCase(), String(r.cliente||''),
-      n(r.base), n(r.iva), n(r.total),
-      String(r.estado||'PENDIENTE').toUpperCase(),
-      String(r.mes||'ENERO').toUpperCase(),
-      String(r.banco||''), n(r.retencion), n(r.capital_trabajo)
-    ];
-  });
-  // Actualizar XL_DATA
-  if (window.XL_DATA) { window.XL_DATA.length = 0; nuevos.forEach(function(r){window.XL_DATA.push(r);}); }
-  // Actualizar KPIs principales del tablero
-  gasActualizarKpisPrincipales(registros);
-  // Actualizar KPIs módulo XL
-  gasActualizarKpisXL(nuevos);
-  // Re-renderizar módulo XL si está abierto
-  if (typeof xlRender === 'function' && document.getElementById('xlSection') && document.getElementById('xlSection').style.display !== 'none') xlRender();
-  // Actualizar módulo facturación SG
-  gasActualizarFacturacionSG(registros);
-  console.log('✅ GAS Facturación: ' + nuevos.length + ' registros');
-}
-
-function gasActualizarKpisPrincipales(registros) {
-  function n(v) { return parseFloat(String(v||0).replace(/[^0-9.-]/g,''))||0; }
-  function fmt(v) { return '$' + Math.round(Math.abs(v)).toLocaleString('es-CO'); }
-  var vigentes = registros.filter(function(r){return String(r.estado||'').toUpperCase()!=='ANULADA';});
-  var totalBase = vigentes.reduce(function(a,r){return a+n(r.base);},0);
-  var totalIVA  = vigentes.reduce(function(a,r){return a+n(r.iva);},0);
-  var totalCop  = vigentes.reduce(function(a,r){return a+n(r.total);},0);
-  var pags = vigentes.filter(function(r){var e=String(r.estado||'').toUpperCase();return e==='PAGADA'||e==='PAGADO';});
-  var pens = vigentes.filter(function(r){return String(r.estado||'').toUpperCase()==='PENDIENTE';});
-  var totalPag = pags.reduce(function(a,r){return a+n(r.total);},0);
-  var cobrar   = pens.reduce(function(a,r){return a+n(r.total);},0);
-  var rtiva15  = Math.round(totalIVA*0.15);
-  var ivaNeto  = totalIVA - rtiva15;
-  var pct = totalCop>0 ? Math.min(100,Math.round(totalPag/totalCop*100)) : 0;
-  var s = function(id,v){var e=document.getElementById(id);if(e)e.textContent=v;};
-  s('r-facturado', fmt(totalBase));
-  s('r-fact-sub',  vigentes.length+' facturas emitidas');
-  s('r-iva-inline',fmt(totalIVA));
-  s('r-total-civa',fmt(totalCop));
-  s('r-utilidad',  fmt(totalCop));
-  s('r-util-sub',  'Margen '+pct+'% · 2026');
-  s('r-iva',       fmt(totalIVA));
-  s('r-cobrar',    fmt(cobrar));
-  s('r-cob-sub',   pens.length+' facturas pendientes');
-  s('r-iva-neto',  fmt(ivaNeto));
-  s('r-iva-saldo', fmt(Math.max(0,ivaNeto)));
-  s('r-prox-iva',  fmt(Math.max(0,ivaNeto)));
-  s('f-base',      fmt(totalBase));
-  s('f-base-s',    vigentes.length+' facturas emitidas');
-  s('f-iva',       '+'+fmt(totalIVA));
-  s('f-rtiva',     '−'+fmt(rtiva15));
-  s('f-neto',      fmt(totalCop-rtiva15));
-  s('f-pct',       pct+'%');
-  var bar=document.getElementById('f-bar');
-  if(bar){bar.style.width=pct+'%';bar.style.background=pct>=80?'#2e7d32':pct>=40?'#e65100':'#c62828';}
-  var ub=document.getElementById('utilBadge');
-  if(ub){ub.textContent=totalCop>=0?'✅ Utilidad positiva':'❌ Pérdida';ub.style.background=totalCop>=0?'#e8faf2':'#fdecea';ub.style.color=totalCop>=0?'#1a7a4a':'#c62828';}
-  var clientes=new Set(vigentes.map(function(r){return r.cliente||'';}));
-  s('bk-cli',  clientes.size);
-  s('bk-pen',  pens.length);
-  s('bk-pen-s',fmt(cobrar));
-  s('bk-cob',  pags.length);
-  s('bk-cob-s',fmt(totalPag));
-}
-
-function gasActualizarFacturacionSG(registros) {
-  if (typeof parsarCSV !== 'function') return;
-  function n(v){return parseFloat(String(v||0).replace(/[^0-9.-]/g,''))||0;}
-  var lineas = ['numero_factura,tipo_documento,fecha,cliente,nit_cc,concepto,subtotal,iva,total_cop,estado,nota'];
-  registros.forEach(function(r){
-    lineas.push([
-      r.factura||'','Factura de Venta',r.fecha||'',
-      String(r.cliente||'').replace(/,/g,' '),'',
-      String(r.concepto||'').replace(/,/g,' '),
-      n(r.base),n(r.iva),n(r.total),r.estado||'Pendiente',''
-    ].join(','));
-  });
-  var nd = parsarCSV(lineas.join('\n'),'sheets');
-  if(nd && nd.length){
-    allData.length=0; nd.forEach(function(r){allData.push(r);});
-    if(typeof populateFilters==='function') populateFilters();
-    if(typeof renderAll==='function') renderAll('todos');
-  }
-}
-
-function gasActualizarKpisXL(data) {
-  if(!data||!data.length) return;
-  var fC=function(n){return '$'+Math.round(n).toLocaleString('es-CO');};
-  var pag=data.filter(function(r){return r[7]==='PAGADA'||r[7]==='PAGADO';}).reduce(function(a,r){return a+r[6];},0);
-  var pen=data.filter(function(r){return r[7]==='PENDIENTE';}).reduce(function(a,r){return a+r[6];},0);
-  var can=data.filter(function(r){return r[7]==='CANJE';}).reduce(function(a,r){return a+r[6];},0);
-  var base=data.reduce(function(a,r){return a+r[4];},0);
-  var cap=data.reduce(function(a,r){return a+r[11];},0);
-  var ret=data.reduce(function(a,r){return a+r[10];},0);
-  var s=function(id,v){var e=document.getElementById(id);if(e)e.textContent=v;};
-  s('xl-kp-pag',fC(pag)); s('xl-kp-pen',fC(pen)); s('xl-kp-can',fC(can));
-  s('xl-kp-base',fC(base)); s('xl-kp-cap',fC(cap||base-ret));
-}
-
-// Headers Sheet Programación: numero, fecha, concepto, fuente, valor, mes, estado, categoria
-function gasAplicarProgramacion(registros) {
-  function n(v){return parseFloat(String(v||0).replace(/[^0-9.-]/g,''))||0;}
-  var nuevos=registros.map(function(r){
-    var val=n(r.valor||r.monto||0);
-    if(val<=0) return null;
-    return [String(r.numero||r.id||'PP-GAS'),String(r.fecha||''),String(r.concepto||r.descripcion||''),String(r.fuente||r.banco||'Sudameris'),val,String(r.mes||'Enero'),String(r.estado||'Pagado'),String(r.categoria||'Otros')];
-  }).filter(function(r){return r!==null;});
-  if(window.PP2){window.PP2.length=0;nuevos.forEach(function(r){window.PP2.push(r);});}
-  if(typeof pp2ActKpis==='function') pp2ActKpis();
-  if(typeof pp2Render==='function'&&document.getElementById('pp2-bloques')) pp2Render();
-  if(typeof ppTInit==='function'&&document.getElementById('ppt-bloques')) ppTInit();
-  console.log('✅ GAS Prog.Pagos: '+nuevos.length+' registros');
 }
 </script>
 </body>
