@@ -1649,7 +1649,7 @@ var ALZAK_ORGS = {
     headerBg:     '#54504F',
     facturacion:  '1YFav2bStziF-VutI0G3Ee53SOBr980wqU6V4jFwVKrE',
     radicadas:    '1rJ4jlLL-_3k2kU7ZPaTfbjpBMRHeORJ8xT7Dsr5JI4I',
-    egresos:      '1YFav2bStziF-VutI0G3Ee53SOBr980wqU6V4jFwVKrE'
+    egresos:      '1rJ4jlLL-_3k2kU7ZPaTfbjpBMRHeORJ8xT7Dsr5JI4I'
   },
   'FOUNDATION': {
     nombre:       'Sistemas Globales Cartagena SAS',
@@ -1658,7 +1658,7 @@ var ALZAK_ORGS = {
     headerBg:     '#54504F',
     facturacion:  '1YFav2bStziF-VutI0G3Ee53SOBr980wqU6V4jFwVKrE',
     radicadas:    '1rJ4jlLL-_3k2kU7ZPaTfbjpBMRHeORJ8xT7Dsr5JI4I',
-    egresos:      '1YFav2bStziF-VutI0G3Ee53SOBr980wqU6V4jFwVKrE'
+    egresos:      '1rJ4jlLL-_3k2kU7ZPaTfbjpBMRHeORJ8xT7Dsr5JI4I'
   }
 };
 
@@ -2165,37 +2165,55 @@ function alzakCargarDatosPrincipal(url, callback) {
       // Egresos → GASTOS_DATA
       // Columnas exactas: Sección, Mes, Fecha, Categoría, Beneficiario, Concepto, N_Comprobante, Subtotal ($), IVA ($), Total ($), Cuenta_Origen, N_Transaccion, Medio_Pago, Tipo_Movimiento, Estado, Observaciones
       if (data.egresos && data.egresos.length) {
+        // SG: columnas del sheet Programación de Pagos:
+        // ITEM | CONCEPTO | VALOR | DIA DE PAGO | FUENTE
+        var _MESES_N = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
+                        'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
         GASTOS_DATA = data.egresos.map(function(r, idx) {
-          var mes = r['Mes']||'';
-          // Si el mes no tiene año, agregarlo (ej: "Enero" → "Enero 2026")
-          if (mes && !/\d{4}/.test(mes)) mes = mes + ' 2026';
-          var total = parseFloat(r['Total ($)']||0);
-          var sub   = parseFloat(r['Subtotal ($)']||0);
-          var iva   = parseFloat(r['IVA ($)']||0);
+          var valor = parseFloat(String(r['VALOR']||r['Valor']||r['valor']||0).replace(/[$\s.]/g,'').replace(',','.')) || 0;
+          // Parsear DIA DE PAGO: "3/1", "05/01", "10/02" → dd/MM → deducir mes
+          var diaPago  = String(r['DIA DE PAGO']||r['Dia de Pago']||r['dia_de_pago']||'').trim();
+          var fechaStr = '', mesStr = '', mesNum = 0;
+          if (diaPago) {
+            var dp = diaPago.split('/');
+            if (dp.length >= 2) {
+              var dd  = dp[0].replace(/\D/g,'');
+              var mm  = dp[1].replace(/\D/g,'');
+              mesNum  = parseInt(mm) || 0;
+              if (dd && mm) {
+                fechaStr = (dd.length<2?'0'+dd:dd) + '/' + (mm.length<2?'0'+mm:mm) + '/2026';
+                mesStr   = mesNum >= 1 && mesNum <= 12 ? _MESES_N[mesNum-1] + ' 2026' : '';
+              }
+            }
+          }
+          var fuente   = String(r['FUENTE']||r['Fuente']||r['fuente']||'').trim();
+          var concepto = String(r['CONCEPTO']||r['Concepto']||r['concepto']||'').trim();
+          // Categoría: inferir de FUENTE
+          var cat = fuente || 'Sin categoría';
           return {
             '_id':            'GS-EG-' + idx,
-            'Sección':        r['Sección']||r['Seccion']||'',
-            'Mes':            mes,
-            'Fecha':          r['Fecha']||'',
-            'Categoria':      r['Categoría']||r['Categoria']||'',
-            'Proveedor':      r['Beneficiario']||r['Proveedor']||'',
-            'Beneficiario':   r['Beneficiario']||'',
-            'Concepto':       r['Concepto']||'',
-            'N_Factura':      r['N_Comprobante']||'',
-            'N_Comprobante':  r['N_Comprobante']||'',
-            'Subtotal ($)':   sub,
-            'Subtotal_COP':   sub,
-            'IVA ($)':        iva,
-            'IVA_COP':        iva,
-            'Total ($)':      total,
-            'Total_COP':      total,
-            'Cuenta_Origen':  r['Cuenta_Origen']||'',
-            'N_Transaccion':  r['N_Transaccion']||'',
-            'Medio_Pago':     r['Medio_Pago']||'',
-            'Tipo_Movimiento':r['Tipo_Movimiento']||'',
-            'Estado':         r['Estado']||'',
-            '_pagada':        (r['Estado']||'').toUpperCase() === 'PAGADO',
-            'Observaciones':  r['Observaciones']||''
+            'Sección':        fuente,
+            'Mes':            mesStr,
+            'Fecha':          fechaStr,
+            'Categoria':      cat,
+            'Proveedor':      concepto,
+            'Beneficiario':   concepto,
+            'Concepto':       concepto,
+            'N_Factura':      String(r['ITEM']||r['Item']||idx+1),
+            'N_Comprobante':  String(r['ITEM']||r['Item']||idx+1),
+            'Subtotal ($)':   valor,
+            'Subtotal_COP':   valor,
+            'IVA ($)':        0,
+            'IVA_COP':        0,
+            'Total ($)':      valor,
+            'Total_COP':      valor,
+            'Cuenta_Origen':  fuente,
+            'N_Transaccion':  '',
+            'Medio_Pago':     fuente,
+            'Tipo_Movimiento': fuente === 'EFECTIVO' ? 'Efectivo' : 'Transferencia',
+            'Estado':         'PAGADO',
+            '_pagada':        true,
+            'Observaciones':  ''
           };
         });
         if (typeof actualizarTodo === 'function') actualizarTodo();
