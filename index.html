@@ -6824,13 +6824,21 @@ function renderFacturas() {
   var totalIVA     = FACTURAS.reduce(function(a,f){return a+(f.iva||0);},0);
   var totalRteF    = FACTURAS.reduce(function(a,f){return a+(f.retefuente||0);},0);
   var totalRteIVA  = FACTURAS.reduce(function(a,f){return a+(f.reteiva||0);},0);
-  var totalNeto    = totalBruto + totalIVA - totalRteF - totalRteIVA;
+  var totalNeto    = totalBruto + totalIVA - totalRteIVA; // SG: sin retefuente
 
   var kp = g('fact-kpis');
   if (kp) kp.innerHTML =
-    '<div class="met"><div class="met-l" style="color:#888">Base gravable</div><div class="met-v tb">' + F(totalBruto) + '</div><div class="met-s">' + FACTURAS.length + ' facturas emitidas</div></div>' +
+    (function(){
+      var facElec2 = FACTURAS.filter(function(f){ return (f.num||'').toUpperCase()!=='EFECTIVO' && (f.cliente||'').toUpperCase()!=='EFECTIVO'; });
+      var facEfec2 = FACTURAS.filter(function(f){ return (f.num||'').toUpperCase()==='EFECTIVO' || (f.cliente||'').toUpperCase()==='EFECTIVO'; });
+      var brElec = facElec2.reduce(function(a,f){return a+(f.bruto||0);},0);
+      var brEfec = facEfec2.reduce(function(a,f){return a+(f.bruto||0);},0);
+      return '<div class="met"><div class="met-l" style="color:#888">Base gravable (electrónica)</div><div class="met-v tb">'+F(brElec)+'</div><div class="met-s">'+facElec2.length+' facturas electrónicas</div></div>'+
+             '<div class="met"><div class="met-l" style="color:#CC1818">💵 Ingreso efectivo</div><div class="met-v" style="color:#CC1818;font-weight:700">'+F(brEfec)+'</div><div class="met-s">'+facEfec2.length+' registros en efectivo</div></div>'+
+             '<div class="met" style="border:1.5px solid rgba(26,43,107,.2)"><div class="met-l" style="color:#1A2B6B">📊 Ingreso operacional total</div><div class="met-v" style="color:#1A2B6B;font-weight:700">'+F(totalBruto)+'</div><div class="met-s">Electrónica + Efectivo</div></div>';
+    })()+
     '<div class="met"><div class="met-l" style="color:#0F6E56">IVA generado 19%</div><div class="met-v" style="color:#0F6E56;font-weight:700">+' + F(totalIVA) + '</div><div class="met-s">IVA en facturas</div></div>' +
-    (ALZAK_ORG_ACTIVA !== 'FOUNDATION' ? '<div class="met"><div class="met-l" style="color:#854F0B">Rte. fuente 11%</div><div class="met-v" style="color:#854F0B;font-weight:700">−' + F(totalRteF) + '</div><div class="met-s">Retención aplicada</div></div>' : '') +
+    /* SG: sin retefuente — régimen simple */
     '<div class="met"><div class="met-l" style="color:#3C3489">Rte. IVA 15%</div><div class="met-v" style="color:#3C3489;font-weight:700">−' + F(totalRteIVA) + '</div><div class="met-s">15% del IVA cobrado</div></div>' +
     '<div class="met" style="border:1.5px solid #993C1D22"><div class="met-l" style="color:#993C1D">Neto a cobrar</div><div class="met-v" style="color:#993C1D;font-weight:700">' + F(totalNeto) + '</div><div class="met-s">Base+IVA−Retenciones</div></div>' +
     '<div class="met"><div class="met-l" style="color:#888">% Recaudo</div><div class="met-v ' + (pctCobro>70?'tg':pctCobro>30?'tw':'tr') + '">' + pctCobro + '%</div><div class="met-s">' + FACTURAS.filter(function(f){return f.pagada;}).length + ' pagadas · ' + FACTURAS.filter(function(f){return !f.pagada;}).length + ' pendientes</div></div>';
@@ -9248,15 +9256,26 @@ function renderCarteraHome() {
   var dIVA     = FACTURAS.reduce(function(a,f){return a+(f.iva||0);},0);
   var dRteF    = FACTURAS.reduce(function(a,f){return a+(f.retefuente||0);},0);
   var dRteIVA  = FACTURAS.reduce(function(a,f){return a+(f.reteiva||0);},0);
-  var dNeto    = dBruto + dIVA - dRteF - dRteIVA;
+  var dNeto    = dBruto + dIVA - dRteIVA; // SG: sin retefuente
 
   var gridCols = 'repeat(6,1fr)';
   if(kp) kp.style.gridTemplateColumns = gridCols;
 
   if(kp)kp.innerHTML=
-    '<div class="ind"><div class="ind-l">Base gravable</div><div class="ind-v tb">'+F(dBruto)+'</div><div class="ind-s">'+FACTURAS.length+' facturas emitidas</div></div>'+
+    (function(){
+      var facElec = FACTURAS.filter(function(f){ return (f.num||'').toUpperCase()!=='EFECTIVO' && (f.cliente||'').toUpperCase()!=='EFECTIVO'; });
+      var facEfec = FACTURAS.filter(function(f){ return (f.num||'').toUpperCase()==='EFECTIVO' || (f.cliente||'').toUpperCase()==='EFECTIVO'; });
+      var brutoElec = facElec.reduce(function(a,f){return a+(f.bruto||0);},0);
+      var brutoEfec = facEfec.reduce(function(a,f){return a+(f.bruto||0);},0);
+      var ingresoTotal = dBruto; // electronico + efectivo
+      window._SG_BRUTO_ELEC = brutoElec;
+      window._SG_BRUTO_EFEC = brutoEfec;
+      return '<div class="ind"><div class="ind-l">Base gravable (electrónica)</div><div class="ind-v tb">'+F(brutoElec)+'</div><div class="ind-s">'+facElec.length+' facturas electrónicas</div></div>'+
+             '<div class="ind"><div class="ind-l" style="color:#CC1818">💵 Ingreso efectivo</div><div class="ind-v" style="color:#CC1818;font-weight:700">'+F(brutoEfec)+'</div><div class="ind-s">'+facEfec.length+' registros en efectivo</div></div>'+
+             '<div class="ind" style="border:1.5px solid rgba(204,24,24,.2)"><div class="ind-l" style="color:#1A2B6B">📊 Ingreso operacional total</div><div class="ind-v" style="color:#1A2B6B;font-weight:700">'+F(ingresoTotal)+'</div><div class="ind-s">Electrónica + Efectivo</div></div>';
+    })()+
     '<div class="ind"><div class="ind-l" style="color:#0F6E56">IVA facturado 19%</div><div class="ind-v" style="color:#0F6E56;font-weight:700">+'+F(dIVA)+'</div><div class="ind-s">IVA generado</div></div>'+
-    '<div class="ind"><div class="ind-l" style="color:#854F0B">Rte. fuente 11%</div><div class="ind-v" style="color:#854F0B;font-weight:700">−'+F(dRteF)+'</div><div class="ind-s">Retención aplicada</div></div>'+
+    /* SG: sin retefuente — régimen simple */
     '<div class="ind"><div class="ind-l" style="color:#3C3489">Rte. IVA 15%</div><div class="ind-v" style="color:#3C3489;font-weight:700">−'+F(dRteIVA)+'</div><div class="ind-s">15% del IVA</div></div>'+
     '<div class="ind" style="border:1.5px solid rgba(153,60,29,.25)"><div class="ind-l" style="color:#993C1D">Total a recibir</div><div class="ind-v" style="color:#993C1D;font-weight:700">'+F(dNeto)+'</div><div class="ind-s">Neto después retenciones</div></div>'+
     '<div class="ind"><div class="ind-l">% Recaudo</div><div class="ind-v '+(pct>70?'tg':pct>30?'tw':'tr')+'">'+pct+'%</div><div style="height:4px;background:#e0ddd8;border-radius:2px;overflow:hidden;margin-top:5px"><div style="height:100%;background:'+(pct>70?'#1D9E75':pct>30?'#EF9F27':'#E24B4A')+';border-radius:2px;width:'+pct+'%"></div></div></div>';
@@ -9271,10 +9290,20 @@ function renderCarteraHome() {
 
     var mm={};
 
+    var MESES_ES=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
     for(var i=0;i<FACTURAS.length;i++){var f=FACTURAS[i];
       var _fd=f.fecha_raw||f.fecha||'',_dp,_mes,_anio;
-      if(_fd.indexOf('/')>=0){var _p=_fd.split('/');_mes=parseInt(_p[1]);_anio=parseInt(_p[2]);}
-      else{_dp=_fd.split('-');_mes=parseInt(_dp[1]);_anio=parseInt(_dp[0]);}
+      if(_fd && _fd.indexOf('/')>=0){var _p=_fd.split('/');_mes=parseInt(_p[1]);_anio=parseInt(_p[2]);}
+      else if(_fd && _fd.indexOf('-')>=0){_dp=_fd.split('-');_mes=parseInt(_dp[1]);_anio=parseInt(_dp[0]);}
+      // SG: si no hay fecha usar campo Mes del Sheet
+      if((!_mes||!_anio) && f['Mes']) {
+        var _mesStr = String(f['Mes']).trim();
+        var _mesPartes = _mesStr.split(' ');
+        var _mesNombre = _mesPartes[0];
+        _anio = _mesPartes[1] ? parseInt(_mesPartes[1]) : new Date().getFullYear();
+        _mes = MESES_ES.indexOf(_mesNombre)+1;
+        if(_mes===0) _mes=NaN;
+      }
       if(!_mes||!_anio)continue;
       var mk=MN[_mes-1]+' '+_anio;
       if(!mm[mk])mm[mk]={total:0,cobrado:0,pendiente:0,vencida:0,mes:_mes,anio:_anio};
