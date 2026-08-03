@@ -627,6 +627,13 @@ tbody tr:hover td{background:var(--cyan-light);}
 
 <input type="text" id="dash-fil-q" placeholder="N° factura o cliente..." oninput="renderCarteraHome()" style="font-size:12px;border-radius:7px;padding:5px 10px;border:1px solid #d0cec8;flex:1;min-width:150px">
 
+<select id="dash-fil-estado" onchange="renderCarteraHome()" style="font-size:12px;border-radius:7px;padding:5px 10px;border:1px solid #d0cec8">
+<option value="">✅ Todos los estados</option>
+<option value="pendiente">🔴 Me deben (pendientes + vencidas)</option>
+<option value="vencida">⚠️ Solo vencidas</option>
+<option value="pagada">✅ Pagadas</option>
+</select>
+
 </div>
 
 <div id="dash-fact-barra" style="margin-bottom:12px"></div>
@@ -2255,7 +2262,7 @@ function alzakCargarDatosPrincipal(url, callback) {
               concepto:    r['Concepto']||'',
               fecha:       fechaDisplay || alzakFechaAISO(r['Fecha']||''),
               fecha_raw:   r['Fecha']||'',
-              'Mes':       r['Mes']||'',
+              'Mes':       r['Mes']||r['mes']||r['MES']||'',
               vence:       venceDias,
               venceDisplay:venceDisplay,
               cliente:     (r['Cliente']||'').trim(),
@@ -6516,6 +6523,13 @@ function badgeFact(est) {
 function filtFacturas(f) {
 
   FACT_FILTRO = f;
+  // SG: también leer filtro de estado del select
+  var selEst = g('dash-fil-estado');
+  if (selEst && selEst.value) {
+    if (selEst.value === 'pendiente') FACT_FILTRO = 'pendiente';
+    else if (selEst.value === 'vencida') FACT_FILTRO = 'vencida';
+    else if (selEst.value === 'pagada') FACT_FILTRO = 'pagada';
+  }
 
   var btns = ['fact-f-todas','fact-f-pend','fact-f-venc','fact-f-pag'];
 
@@ -7493,8 +7507,52 @@ function renderTablaFact() {
 
   }
 
-  el.innerHTML = res + (lista.length ? '<div class="tw-wrap"><table><thead><tr><th>Factura</th><th>Cliente</th><th>NIT</th><th>Emision</th><th>Vencimiento</th><th>Dias</th><th>Bruto</th><th>Total</th><th>Estado</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>' : '<p style="text-align:center;padding:20px;color:#888;font-size:12px">Sin facturas.</p>');
+  // SG: mostrar solo primeras 10 filas con botón Ver más
+  var FILAS_INIT = 10;
+  var listaVis   = listaOrd.slice(0, FILAS_INIT);
+  var listaRest  = listaOrd.slice(FILAS_INIT);
+  var rowsVis = '', rowsRest = '';
 
+  function buildRow(f) {
+    var est = estadoFact(f), dias = diasHasta(f.vence);
+    var dTxt = f.pagada ? 'Pagada' : dias < 0 ? Math.abs(dias) + 'd vencida' : dias + 'd para vencer';
+    var dCol = f.pagada ? '#C8DABB' : dias < 0 ? '#A32D2D' : dias <= 15 ? '#854F0B' : '#CC1818';
+    var rBg  = f.pagada ? 'background:#f9fffc' : !f.pagada && dias < 0 ? 'background:#fff9f9' : '';
+    return '<tr style="' + rBg + '"><td style="font-weight:700;color:#CC1818;font-size:12px;white-space:nowrap">' + f.num + '</td>' +
+      '<td style="font-size:12px;font-weight:600;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + f.cliente + '</td>' +
+      '<td style="font-size:11px;color:#888">' + f.nit + '</td>' +
+      '<td style="font-size:11px">' + f.fecha + '</td>' +
+      '<td style="font-size:11px;font-weight:600;color:' + dCol + '">' + (f.venceDisplay||alzakFechaDisplay(f.vence)) + ' <span onclick="editarFechaVencimiento('' + f.num + '','' + (f.venceDisplay||f.vence) + '')" title="Editar vencimiento" style="cursor:pointer;opacity:0.4;font-size:10px;">✏️</span></td>' +
+      '<td style="font-size:11px;color:' + dCol + '">' + dTxt + '</td>' +
+      '<td style="text-align:right;font-size:11px;color:#888">' + F(f.bruto) + '</td>' +
+      '<td style="text-align:right;font-weight:700;color:#CC1818">' + F(f.total) + '</td>' +
+      '<td>' + badgeFact(est) + '</td>' +
+      '<td><button class="btn ' + (f.pagada ? 'bgr' : 'btn-p') + '" onclick="abrirModalPago('' + f.id + '')" style="font-size:10px;padding:3px 8px">' + (f.pagada ? 'E' : 'P') + '</button>' +
+      ' <button class="btn btn-del-fact" data-id="' + f.id + '" style="font-size:10px;padding:3px 8px;color:#A32D2D;border-color:#f0ccc8" title="Eliminar">🗑</button></td></tr>';
+  }
+
+  for (var i = 0; i < listaVis.length; i++)  rowsVis  += buildRow(listaVis[i]);
+  for (var i = 0; i < listaRest.length; i++) rowsRest += buildRow(listaRest[i]);
+
+  var verMasBtn = listaRest.length > 0
+    ? '<tr id="tr-ver-mas-fact"><td colspan="10" style="text-align:center;padding:10px">' +
+      '<button class="btn" onclick="sgVerMasFact()" style="font-size:11px;background:#f0f0f0;border-color:#ccc;color:#54504F">▼ Ver ' + listaRest.length + ' facturas más</button></td></tr>' : '';
+
+  var thead = '<thead><tr><th>Factura</th><th>Cliente</th><th>NIT</th><th>Emision</th><th>Vencimiento</th><th>Dias</th><th>Bruto</th><th>Total</th><th>Estado</th><th></th></tr></thead>';
+  var tbody = '<tbody id="tbody-fact-vis">' + rowsVis + verMasBtn + '</tbody>';
+  var tbodyHidden = '<tbody id="tbody-fact-rest" style="display:none">' + rowsRest + '</tbody>';
+
+  el.innerHTML = res + (lista.length
+    ? '<div class="tw-wrap"><table>' + thead + tbody + tbodyHidden + '</table></div>'
+    : '<p style="text-align:center;padding:20px;color:#888;font-size:12px">Sin facturas.</p>');
+
+}
+
+function sgVerMasFact() {
+  var rest = g('tbody-fact-rest');
+  var btn  = g('tr-ver-mas-fact');
+  if (rest) { rest.style.display = ''; }
+  if (btn)  { btn.style.display = 'none'; }
 }
 
 function factToggleCliente(id) {
@@ -9305,38 +9363,38 @@ function renderCarteraHome() {
   var barEl=g('dash-fact-barras-mes');
 
   if(barEl&&FACTURAS.length){
-
     var MN=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
     var mm={};
-
-    // SG: separar electrónicas vs efectivo por mes
-    for(var i=0;i<FACTURAS.length;i++){var f=FACTURAS[i];
-      var _fd=f.fecha_raw||f.fecha||'',_mes=0,_anio=0;
-      // 1. Intentar desde fecha dd/MM/yyyy
-      if(_fd && _fd.indexOf('/')>=0){var _p=_fd.split('/');_mes=parseInt(_p[1]);_anio=parseInt(_p[2]);}
-      else if(_fd && _fd.indexOf('-')>=0){var _dp=_fd.split('-');_mes=parseInt(_dp[1]);_anio=parseInt(_dp[0]);}
-      // 2. SG fallback: usar campo Mes "Enero 2026", "Febrero 2026", etc.
-      if((!_mes||!_anio) && f['Mes']) {
-        var _ms=String(f['Mes']).trim().split(' ');
-        _anio=_ms[1]?parseInt(_ms[1]):new Date().getFullYear();
-        _mes=MN.indexOf(_ms[0])+1;
-        if(_mes<=0) _mes=0;
-      }
-      if(!_mes||!_anio) continue;
-      var mk=MN[_mes-1]+' '+_anio;
-      if(!mm[mk]) mm[mk]={total:0,elec:0,efec:0,cobrado:0,pendiente:0,vencida:0,mes:_mes,anio:_anio};
-      // Detectar si es efectivo
-      var esEfec = (f.num||'').toUpperCase()==='EFECTIVO' || (f.cliente||'').toUpperCase()==='EFECTIVO';
-      mm[mk].total += f.bruto||0;
-      if(esEfec) mm[mk].efec += f.bruto||0;
-      else       mm[mk].elec += f.bruto||0;
-      if(f.pagada) mm[mk].cobrado+=f.total;
-      else if(estadoFact(f)==='vencida') mm[mk].vencida+=f.total;
-      else mm[mk].pendiente+=f.total;
-    }
-
-    // Agregar programadas de FP_DATA a meses futuros
     var hoyMes=new Date().getMonth()+1, hoyAnio=new Date().getFullYear();
+
+    // Agrupar por mes — usar campo Mes "Enero 2026" como fuente principal
+    for(var i=0;i<FACTURAS.length;i++){var f=FACTURAS[i];
+      var _mes=0,_anio=0;
+      // Fuente 1: campo Mes del sheet (más fiable para SG)
+      if(f['Mes']){
+        var _ms=String(f['Mes']).trim().split(' ');
+        _anio=_ms[1]?parseInt(_ms[1]):hoyAnio;
+        _mes=MN.indexOf(_ms[0])+1;
+      }
+      // Fuente 2: fecha_raw dd/MM/yyyy
+      if((!_mes||!_anio)&&f.fecha_raw){
+        var _p=f.fecha_raw.split('/');
+        if(_p.length===3){_mes=parseInt(_p[1]);_anio=parseInt(_p[2]);}
+      }
+      // Fuente 3: fecha yyyy-MM-dd
+      if((!_mes||!_anio)&&f.fecha&&f.fecha.indexOf('-')>=0){
+        var _dp=f.fecha.split('-');_mes=parseInt(_dp[1]);_anio=parseInt(_dp[0]);
+      }
+      if(!_mes||!_anio)continue;
+      var mk=MN[_mes-1]+' '+_anio;
+      if(!mm[mk])mm[mk]={total:0,cobrado:0,pendiente:0,vencida:0,programada:0,mes:_mes,anio:_anio};
+      mm[mk].total+=f.total||0;
+      var st=estadoFact(f);
+      if(f.pagada)mm[mk].cobrado+=f.total||0;
+      else if(st==='vencida')mm[mk].vencida+=f.total||0;
+      else mm[mk].pendiente+=f.total||0;
+    }
+    // Programadas de FP_DATA
     if(typeof FP_DATA!=='undefined'){
       FP_DATA.forEach(function(fp){
         if(!fp.fecha)return;
@@ -9345,63 +9403,59 @@ function renderCarteraHome() {
         if(!fMes||!fAnio)return;
         var mk=MN[fMes-1]+' '+fAnio;
         if(!mm[mk])mm[mk]={total:0,cobrado:0,pendiente:0,vencida:0,programada:0,mes:fMes,anio:fAnio};
-        if(!mm[mk].programada)mm[mk].programada=0;
         mm[mk].programada+=(parseFloat(fp.monto)||0);
       });
     }
     var meses=Object.keys(mm).sort(function(a,b){return mm[a].anio!==mm[b].anio?mm[a].anio-mm[b].anio:mm[a].mes-mm[b].mes;});
     var maxV=0;
-    for(var i=0;i<meses.length;i++){var mv=mm[meses[i]];var tv=(mv.elec||0)+(mv.efec||0)+(mv.programada||0);if(tv>maxV)maxV=tv;}
+    for(var i=0;i<meses.length;i++){var mv=mm[meses[i]];var tv=mv.total+(mv.programada||0);if(tv>maxV)maxV=tv;}
     maxV=maxV*1.15||1;
     var nM=meses.length;
-    var W=560,H=150,PL=56,PR=10,PT=16,PB=28;
+    var W=500,H=130,PL=52,PR=10,PT=14,PB=26;
     var CW=W-PL-PR,CH=H-PT-PB;
-    // Dos barras por mes: electrónica + efectivo
-    var bw=Math.max(8,Math.min(22,CW/nM*0.38));
-    var gap=Math.max(2,bw*0.3);
+    var bw=Math.max(20,Math.min(60,CW/nM*0.55));
     var svg='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:'+H+'px">';
     for(var t=0;t<=4;t++){
       var yv=Math.round(PT+CH-(t/4)*CH);
       var yVal=maxV*t/4;
-      var yLbl=yVal>=1000000?('$'+Math.round(yVal/100000)/10+'M'):yVal>=1000?('$'+Math.round(yVal/1000)+'k'):'$0';
+      var yLbl=yVal>=1000000?('$'+Math.round(yVal/100000)/10+'M'):('$'+Math.round(yVal/1000)+'k');
       svg+='<line x1="'+PL+'" y1="'+yv+'" x2="'+(W-PR)+'" y2="'+yv+'" stroke="#ede9e4" stroke-width="1"/>';
-      svg+='<text x="'+(PL-4)+'" y="'+(yv+4)+'" text-anchor="end" font-size="9" fill="#aaa" font-family="Montserrat,sans-serif">'+yLbl+'</text>';
+      svg+='<text x="'+(PL-5)+'" y="'+(yv+4)+'" text-anchor="end" font-size="9" fill="#aaa" font-family="Montserrat,sans-serif">'+yLbl+'</text>';
     }
     for(var i=0;i<nM;i++){
       var m=meses[i],md=mm[m];
+      var esFuturo=md.anio>hoyAnio||(md.anio===hoyAnio&&md.mes>hoyMes);
       var cx=Math.round(PL+(i+0.5)*(CW/nM));
       var yBase=PT+CH;
-      // Barra IZQUIERDA: Factura electrónica (azul SG)
-      var hElec=md.elec>0?Math.max(2,Math.round((md.elec/maxV)*CH)):0;
-      var cxElec=cx-gap/2-bw;
-      if(hElec>0){
-        svg+='<rect x="'+cxElec+'" y="'+(yBase-hElec)+'" width="'+bw+'" height="'+hElec+'" fill="#1A2B6B" rx="2"/>';
+      var hProg=md.programada?Math.round(((md.programada||0)/maxV)*CH):0;
+      var hC=Math.round((md.cobrado/maxV)*CH);
+      var hP=Math.round((md.pendiente/maxV)*CH);
+      var hV=Math.round((md.vencida/maxV)*CH);
+      if(hV>0)svg+='<rect x="'+(cx-bw/2)+'" y="'+(yBase-hV)+'" width="'+bw+'" height="'+hV+'" fill="#E24B4A" rx="2"/>';
+      if(hP>0)svg+='<rect x="'+(cx-bw/2)+'" y="'+(yBase-hV-hP)+'" width="'+bw+'" height="'+hP+'" fill="#EF9F27" rx="0"/>';
+      if(hC>0)svg+='<rect x="'+(cx-bw/2)+'" y="'+(yBase-hV-hP-hC)+'" width="'+bw+'" height="'+hC+'" fill="#1D9E75" rx="2"/>';
+      if(hProg>0){
+        var yProg=yBase-hV-hP-hC-hProg;
+        svg+='<rect x="'+(cx-bw/2)+'" y="'+yProg+'" width="'+bw+'" height="'+hProg+'" fill="#7C3AED" opacity="0.3" rx="2"/>';
+        svg+='<rect x="'+(cx-bw/2)+'" y="'+yProg+'" width="'+bw+'" height="'+hProg+'" fill="none" stroke="#7C3AED" stroke-width="1.5" stroke-dasharray="4,3" rx="2"/>';
       }
-      // Barra DERECHA: Efectivo (rojo SG)
-      var hEfec=md.efec>0?Math.max(2,Math.round((md.efec/maxV)*CH)):0;
-      var cxEfec=cx+gap/2;
-      if(hEfec>0){
-        svg+='<rect x="'+cxEfec+'" y="'+(yBase-hEfec)+'" width="'+bw+'" height="'+hEfec+'" fill="#CC1818" rx="2"/>';
-      }
-      // Etiqueta total mes encima de la barra más alta
-      var totMes=(md.elec||0)+(md.efec||0);
-      if(totMes>0){
-        var hMax=Math.max(hElec,hEfec);
-        var totM=totMes/1000000;
-        var totLbl=totM>=10?(Math.round(totM*10)/10)+'M':totM>=1?(Math.round(totM*100)/100)+'M':('$'+Math.round(totMes/1000)+'k');
-        var yLblV=yBase-hMax-5;
-        if(yLblV<PT+8)yLblV=PT+8;
-        svg+='<text x="'+cx+'" y="'+yLblV+'" text-anchor="middle" font-size="9" font-weight="700" fill="#54504F" font-family="Montserrat,sans-serif">'+totLbl+'</text>';
-      }
-      // Etiqueta mes
+      var totMes=md.total+(md.programada||0);
+      var totM=totMes/1000000;
+      var totLbl=totM>=100?Math.round(totM)+'M':totM>=10?(Math.round(totM*10)/10)+'M':totM>=1?(Math.round(totM*100)/100)+'M':('$'+Math.round(totMes/1000)+'k');
+      var hTot=hV+hP+hC+hProg;
+      var yLblV=yBase-hTot-5;if(yLblV<PT+8)yLblV=PT+8;
+      var lblCol=(esFuturo&&md.total===0)?'#7C3AED':'#CC1818';
+      svg+='<text x="'+cx+'" y="'+yLblV+'" text-anchor="middle" font-size="9" font-weight="700" fill="'+lblCol+'" font-family="Montserrat,sans-serif">$'+totLbl+'</text>';
       var mesLbl=m.replace(' 2026','').replace(' 2025','').substring(0,3);
-      svg+='<text x="'+cx+'" y="'+(H-6)+'" text-anchor="middle" font-size="10" fill="#555" font-family="Montserrat,sans-serif">'+mesLbl+'</text>';
+      var mesCol=(esFuturo&&md.total===0)?'#7C3AED':'#555';
+      svg+='<text x="'+cx+'" y="'+(H-8)+'" text-anchor="middle" font-size="11" fill="'+mesCol+'" font-weight="'+(esFuturo&&md.total===0?'700':'400')+'" font-family="Montserrat,sans-serif">'+mesLbl+'</text>';
     }
     svg+='</svg>';
-    barEl.innerHTML=svg
-      +'<div style="display:flex;gap:16px;margin-top:6px;flex-wrap:wrap">'
-      +'<span style="font-size:10px;display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;background:#1A2B6B;display:inline-block"></span>Factura electrónica</span>'
-      +'<span style="font-size:10px;display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;background:#CC1818;display:inline-block"></span>Efectivo</span>'
+    barEl.innerHTML=svg+'<div style="display:flex;gap:14px;margin-top:6px;flex-wrap:wrap">'
+      +'<span style="font-size:10px;display:flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:2px;background:#1D9E75;display:inline-block"></span>Pagado</span>'
+      +'<span style="font-size:10px;display:flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:2px;background:#EF9F27;display:inline-block"></span>Pendiente</span>'
+      +'<span style="font-size:10px;display:flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:2px;background:#E24B4A;display:inline-block"></span>Vencida</span>'
+      +'<span style="font-size:10px;display:flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:2px;background:#7C3AED;opacity:0.5;display:inline-block"></span>Programada</span>'
       +'</div>';
 
   }else if(barEl){barEl.innerHTML='';}
