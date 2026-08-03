@@ -6532,13 +6532,7 @@ function badgeFact(est) {
 function filtFacturas(f) {
 
   FACT_FILTRO = f;
-  // SG: también leer filtro de estado del select
-  var selEst = g('dash-fil-estado');
-  if (selEst && selEst.value) {
-    if (selEst.value === 'pendiente') FACT_FILTRO = 'pendiente';
-    else if (selEst.value === 'vencida') FACT_FILTRO = 'vencida';
-    else if (selEst.value === 'pagada') FACT_FILTRO = 'pagada';
-  }
+  // SG: filtro estado se lee directo en factFiltrarLista
 
   var btns = ['fact-f-todas','fact-f-pend','fact-f-venc','fact-f-pag'];
 
@@ -7289,22 +7283,27 @@ function poblarSelectClientes() {
 }
 
 function factFiltrarLista() {
-  var cFil  = g('dash-fil-cliente') ? g('dash-fil-cliente').value : '';
-  var aFil  = g('dash-fil-anio')    ? g('dash-fil-anio').value    : '';
-  var qFil  = (g('dash-fil-q')      ? g('dash-fil-q').value       : '').toLowerCase();
-  var eFil  = g('dash-fil-estado')  ? g('dash-fil-estado').value  : '';
-  var tFil  = g('dash-fil-tipo')    ? g('dash-fil-tipo').value     : '';
+  var cFil = g('dash-fil-cliente') ? g('dash-fil-cliente').value : '';
+  var aFil = g('dash-fil-anio')    ? g('dash-fil-anio').value    : '';
+  var qFil = (g('dash-fil-q')      ? g('dash-fil-q').value       : '').toLowerCase();
+  var eFil = g('dash-fil-estado')  ? g('dash-fil-estado').value  : '';
+  var tFil = g('dash-fil-tipo')    ? g('dash-fil-tipo').value     : '';
+
+  // Combinar con FACT_FILTRO (botones de filtro rápido)
+  if (!eFil && FACT_FILTRO && FACT_FILTRO !== 'todas') eFil = FACT_FILTRO;
 
   return FACTURAS.filter(function(f) {
+    // Filtro cliente
     if (cFil && f.cliente !== cFil) return false;
 
-    // Filtro año — buscar en campo Mes "Enero 2026" o en fecha
+    // Filtro año — campo Mes "Enero 2026" o fecha
     if (aFil) {
       var enMes   = (f['Mes']||f['mes']||'').indexOf(aFil) >= 0;
       var enFecha = (f.fecha||'').indexOf(aFil) >= 0;
       if (!enMes && !enFecha) return false;
     }
 
+    // Filtro texto
     if (qFil && f.num.toLowerCase().indexOf(qFil) < 0 && f.cliente.toLowerCase().indexOf(qFil) < 0) return false;
 
     // Filtro estado
@@ -7312,20 +7311,19 @@ function factFiltrarLista() {
       var est2 = estadoFact(f);
       if (eFil === 'pagada'    && !f.pagada) return false;
       if (eFil === 'vencida'   && (f.pagada || est2 !== 'vencida')) return false;
-      if (eFil === 'pendiente' && (f.pagada || est2 === 'vencida' ? false : false) && f.pagada) return false;
       if (eFil === 'pendiente' && f.pagada) return false;
     }
 
     // Filtro tipo SG
     if (tFil) {
-      var tipo    = (f.tipo||'').toUpperCase();
-      var cliente = (f.cliente||'').toUpperCase();
+      var tipo = (f.tipo||'').toUpperCase();
+      var cli  = (f.cliente||'').toUpperCase();
       if (tFil === 'PUBLICIDAD' && tipo !== 'PUBLICIDAD') return false;
       if (tFil === 'GPS'        && tipo !== 'GPS') return false;
       if (tFil === 'CAMARAS'    && tipo !== 'CAMARAS' && tipo !== 'CAMARA' && tipo !== 'CÁMARA') return false;
       if (tFil === 'CANJE'      && tipo.indexOf('CANJE') < 0) return false;
-      if (tFil === 'CAMILO'     && cliente.indexOf('CAMILO CONTRERAS') < 0) return false;
-      if (tFil === 'PHARMASER'  && cliente.indexOf('PHARMASER') < 0) return false;
+      if (tFil === 'CAMILO'     && cli.indexOf('CAMILO CONTRERAS') < 0) return false;
+      if (tFil === 'PHARMASER'  && cli.indexOf('PHARMASER') < 0) return false;
     }
 
     return true;
