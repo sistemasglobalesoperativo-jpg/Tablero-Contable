@@ -2250,6 +2250,7 @@ function alzakCargarDatosPrincipal(url, callback) {
             return {
               id:          'GS-' + idx,
               num:         r['N_Factura']||r['N Factura']||r['Factura']||r['N°']||'',
+              tipo:        r['tipo']||r['Tipo']||r['TIPO']||'',
               estado:      estadoRaw,
               concepto:    r['Concepto']||'',
               fecha:       fechaDisplay || alzakFechaAISO(r['Fecha']||''),
@@ -9651,12 +9652,36 @@ function renderResumenTablero() {
 
   // ── Datos ─────────────────────────────────────────────────
 
-  var totalFact   = FACTURAS.reduce(function(a,f){ return a+(f.bruto||0); }, 0);
+  // ── SG: separar facturas por grupo ──────────────────────────────────
+  // Grupo 1 — Operacional: tipo = PUBLICIDAD, GPS, CAMARAS
+  // Grupo 2 — Especial:    tipo = CANJE  o  cliente contiene CAMILO CONTRERAS o PHARMASER
+  function sgGrupoFact(f) {
+    var tipo   = (f.tipo||f['tipo']||'').toString().toUpperCase().trim();
+    var cliente= (f.cliente||'').toUpperCase();
+    var num    = (f.num||'').toUpperCase();
+    // Grupo canje/especial
+    if (tipo === 'CANJE' || tipo.indexOf('CANJE') >= 0 ||
+        cliente.indexOf('CAMILO CONTRERAS') >= 0 ||
+        cliente.indexOf('PHARMASER') >= 0)
+      return 'especial';
+    // Grupo operacional
+    if (tipo === 'PUBLICIDAD' || tipo === 'GPS' || tipo === 'CAMARAS' ||
+        tipo === 'CÁMARA' || tipo === 'CAMARA')
+      return 'operacional';
+    return 'otro';
+  }
 
+  var facOper    = FACTURAS.filter(function(f){ return sgGrupoFact(f)==='operacional'; });
+  var facEspec   = FACTURAS.filter(function(f){ return sgGrupoFact(f)==='especial'; });
+  var facOtro    = FACTURAS.filter(function(f){ return sgGrupoFact(f)==='otro'; });
+
+  var totalOper  = facOper.reduce(function(a,f){ return a+(f.bruto||0); }, 0);
+  var totalEspec = facEspec.reduce(function(a,f){ return a+(f.bruto||0); }, 0);
+  var totalOtro  = facOtro.reduce(function(a,f){ return a+(f.bruto||0); }, 0);
+
+  var totalFact  = FACTURAS.reduce(function(a,f){ return a+(f.bruto||0); }, 0);
   var totalCobrado= FACTURAS.filter(function(f){return f.pagada;}).reduce(function(a,f){return a+(f.total||0);},0);
-
   var totalPendFact = FACTURAS.filter(function(f){return !f.pagada;}).reduce(function(a,f){return a+(f.total||0);},0);
-
   var nFact = FACTURAS.length;
 
   // Excluir obligaciones tributarias del cálculo de gastos operativos (no afectan P&L)
@@ -9814,7 +9839,33 @@ function renderResumenTablero() {
 
     +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">'
 
-    + card('📄','Total facturado',  ingResumen, '#CC1818','#EBF3FB', nFact+' facturas emitidas', '')
+    // SG: Tres cards de facturación diferenciados
+    + (function(){
+        var pctCob = totalFact ? Math.round(totalCobrado/totalFact*100) : 0;
+        return '<div style="background:#EBF3FB;border-radius:11px;padding:15px 18px;flex:2;min-width:340px;border:1px solid rgba(204,24,24,.12)">'
+          +'<div style="font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">📄 Facturación Total · '+nFact+' facturas</div>'
+          +'<div style="display:flex;gap:10px;flex-wrap:wrap">'
+          // Card operacional
+          +'<div style="flex:1;min-width:130px;background:#fff;border-radius:8px;padding:10px 12px;border-left:3px solid #1A2B6B">'
+          +'<div style="font-size:10px;font-weight:700;color:#1A2B6B;margin-bottom:4px">📺 PUBLICIDAD · GPS · CÁMARAS</div>'
+          +'<div style="font-size:15px;font-weight:700;color:#1A2B6B">'+F(totalOper)+'</div>'
+          +'<div style="font-size:10px;color:#888;margin-top:2px">'+facOper.length+' facturas · '+Math.round(totalFact?totalOper/totalFact*100:0)+'% del total</div>'
+          +'</div>'
+          // Card canje/especial
+          +'<div style="flex:1;min-width:130px;background:#fff;border-radius:8px;padding:10px 12px;border-left:3px solid #CC1818">'
+          +'<div style="font-size:10px;font-weight:700;color:#CC1818;margin-bottom:4px">🤝 CANJE · CAMILO · PHARMASER</div>'
+          +'<div style="font-size:15px;font-weight:700;color:#CC1818">'+F(totalEspec)+'</div>'
+          +'<div style="font-size:10px;color:#888;margin-top:2px">'+facEspec.length+' facturas · '+Math.round(totalFact?totalEspec/totalFact*100:0)+'% del total</div>'
+          +'</div>'
+          // Card total sumado
+          +'<div style="flex:1;min-width:130px;background:#fff;border-radius:8px;padding:10px 12px;border-left:3px solid #54504F">'
+          +'<div style="font-size:10px;font-weight:700;color:#54504F;margin-bottom:4px">📊 INGRESO TOTAL</div>'
+          +'<div style="font-size:15px;font-weight:700;color:#54504F">'+F(ingResumen)+'</div>'
+          +'<div style="font-size:10px;color:#888;margin-top:2px">Cobrado: '+F(totalCobrado)+' ('+pctCob+'%)</div>'
+          +'</div>'
+          +'</div>'
+          +'</div>';
+      })()
 
     + card('💸','Total costos',      totalEgr,   '#A32D2D','#FEF2F2',
         (typeof FR_DATA!=='undefined'&&FR_DATA.length
