@@ -633,6 +633,15 @@ tbody tr:hover td{background:var(--cyan-light);}
 <option value="vencida">⚠️ Solo vencidas</option>
 <option value="pagada">✅ Pagadas</option>
 </select>
+<select id="dash-fil-tipo" onchange="renderCarteraHome()" style="font-size:12px;border-radius:7px;padding:5px 10px;border:1px solid #d0cec8">
+<option value="">📂 Todos los tipos</option>
+<option value="PUBLICIDAD">📺 Publicidad</option>
+<option value="GPS">📡 GPS</option>
+<option value="CAMARAS">📷 Cámaras</option>
+<option value="CANJE">🤝 Canje</option>
+<option value="CAMILO">👤 Camilo Contreras</option>
+<option value="PHARMASER">💊 Pharmaser</option>
+</select>
 
 </div>
 
@@ -2262,7 +2271,7 @@ function alzakCargarDatosPrincipal(url, callback) {
               concepto:    r['Concepto']||'',
               fecha:       fechaDisplay || alzakFechaAISO(r['Fecha']||''),
               fecha_raw:   r['Fecha']||'',
-              'Mes':       r['Mes']||r['mes']||r['MES']||'',
+              'Mes':       r['Mes']||r['mes']||r['MES']||r['mes ']||'',
               vence:       venceDias,
               venceDisplay:venceDisplay,
               cliente:     (r['Cliente']||'').trim(),
@@ -7280,25 +7289,47 @@ function poblarSelectClientes() {
 }
 
 function factFiltrarLista() {
-
-  var cFil = g('dash-fil-cliente') ? g('dash-fil-cliente').value : '';
-
-  var aFil = g('dash-fil-anio') ? g('dash-fil-anio').value : '';
-
-  var qFil = (g('dash-fil-q') ? g('dash-fil-q').value : '').toLowerCase();
+  var cFil  = g('dash-fil-cliente') ? g('dash-fil-cliente').value : '';
+  var aFil  = g('dash-fil-anio')    ? g('dash-fil-anio').value    : '';
+  var qFil  = (g('dash-fil-q')      ? g('dash-fil-q').value       : '').toLowerCase();
+  var eFil  = g('dash-fil-estado')  ? g('dash-fil-estado').value  : '';
+  var tFil  = g('dash-fil-tipo')    ? g('dash-fil-tipo').value     : '';
 
   return FACTURAS.filter(function(f) {
-
     if (cFil && f.cliente !== cFil) return false;
 
-    if (aFil && f.fecha.indexOf(aFil) < 0) return false;
+    // Filtro año — buscar en campo Mes "Enero 2026" o en fecha
+    if (aFil) {
+      var enMes   = (f['Mes']||f['mes']||'').indexOf(aFil) >= 0;
+      var enFecha = (f.fecha||'').indexOf(aFil) >= 0;
+      if (!enMes && !enFecha) return false;
+    }
 
     if (qFil && f.num.toLowerCase().indexOf(qFil) < 0 && f.cliente.toLowerCase().indexOf(qFil) < 0) return false;
 
+    // Filtro estado
+    if (eFil) {
+      var est2 = estadoFact(f);
+      if (eFil === 'pagada'    && !f.pagada) return false;
+      if (eFil === 'vencida'   && (f.pagada || est2 !== 'vencida')) return false;
+      if (eFil === 'pendiente' && (f.pagada || est2 === 'vencida' ? false : false) && f.pagada) return false;
+      if (eFil === 'pendiente' && f.pagada) return false;
+    }
+
+    // Filtro tipo SG
+    if (tFil) {
+      var tipo    = (f.tipo||'').toUpperCase();
+      var cliente = (f.cliente||'').toUpperCase();
+      if (tFil === 'PUBLICIDAD' && tipo !== 'PUBLICIDAD') return false;
+      if (tFil === 'GPS'        && tipo !== 'GPS') return false;
+      if (tFil === 'CAMARAS'    && tipo !== 'CAMARAS' && tipo !== 'CAMARA' && tipo !== 'CÁMARA') return false;
+      if (tFil === 'CANJE'      && tipo.indexOf('CANJE') < 0) return false;
+      if (tFil === 'CAMILO'     && cliente.indexOf('CAMILO CONTRERAS') < 0) return false;
+      if (tFil === 'PHARMASER'  && cliente.indexOf('PHARMASER') < 0) return false;
+    }
+
     return true;
-
   });
-
 }
 
 function toggleDetalleFact() {
@@ -7466,37 +7497,61 @@ function renderTablaFact() {
     + '<span style="color:#1D9E75">Pagado: <strong>' + F(cS) + '</strong></span>'
     + '<span style="color:#854F0B">Pendiente: <strong>' + F(tS-cS) + '</strong></span></div>';
 
-  var listaOrd = lista.slice().sort(function(a,b){ return new Date(a.vence)-new Date(b.vence); });
-  var LIMIT = 10;
-  var thead = '<thead><tr><th>Factura</th><th>Cliente</th><th>NIT</th><th>Emision</th><th>Vencimiento</th><th>Dias</th><th>Bruto</th><th>Total</th><th>Estado</th><th></th></tr></thead>';
+  // Ordenar: pendientes/vencidas primero, luego pagadas
+  var listaOrd = lista.slice().sort(function(a,b){
+    if (a.pagada !== b.pagada) return a.pagada ? 1 : -1;
+    return (b.total||0) - (a.total||0);
+  });
+
+  var LIMIT = 15;
+  var thead = '<thead><tr>'
+    + '<th>Factura</th><th>Cliente</th><th>Tipo</th>'
+    + '<th>Mes</th><th>Bruto</th><th>Total</th><th>Estado</th><th></th>'
+    + '</tr></thead>';
+
+  // Badge por tipo
+  function tipoBadge(f) {
+    var tipo = (f.tipo||'').toUpperCase();
+    var cli  = (f.cliente||'').toUpperCase();
+    var color, label;
+    if (tipo === 'GPS')      { color='#1A2B6B'; label='📡 GPS'; }
+    else if (tipo === 'CAMARAS' || tipo === 'CAMARA' || tipo === 'CÁMARA')
+                             { color='#0F6E56'; label='📷 Cámaras'; }
+    else if (tipo.indexOf('CANJE') >= 0)
+                             { color='#7C3AED'; label='🤝 Canje'; }
+    else if (cli.indexOf('CAMILO CONTRERAS') >= 0)
+                             { color='#854F0B'; label='👤 Camilo'; }
+    else if (cli.indexOf('PHARMASER') >= 0)
+                             { color='#0F6E56'; label='💊 Pharmaser'; }
+    else if (tipo === 'PUBLICIDAD')
+                             { color='#CC1818'; label='📺 Publicidad'; }
+    else                     { color='#888';    label= tipo||'—'; }
+    return '<span style="font-size:10px;font-weight:700;color:'+color+';white-space:nowrap">'+label+'</span>';
+  }
 
   function fila(f) {
     var est  = estadoFact(f);
     var dias = diasHasta(f.vence);
-    var dTxt = f.pagada ? 'Pagada' : (dias < 0 ? Math.abs(dias)+'d vencida' : dias+'d para vencer');
     var dCol = f.pagada ? '#C8DABB' : (dias < 0 ? '#A32D2D' : (dias <= 15 ? '#854F0B' : '#CC1818'));
     var rBg  = f.pagada ? 'background:#f9fffc' : (!f.pagada && dias < 0 ? 'background:#fff9f9' : '');
-    var fid  = (f.id||'').replace(/'/g, '');
-    var fnum = (f.num||'').replace(/'/g, '');
-    var fvd  = (f.venceDisplay||alzakFechaDisplay(f.vence)||'').replace(/'/g, '');
+    var fid  = (f.id||'').replace(/'/g,'');
+    var mesLbl = (f['Mes']||f['mes']||f.fecha||'—').replace(' 2026','').replace(' 2025','');
     return '<tr style="'+rBg+'">'
       + '<td style="font-weight:700;color:#CC1818;font-size:12px;white-space:nowrap">'+f.num+'</td>'
-      + '<td style="font-size:12px;font-weight:600;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+f.cliente+'</td>'
-      + '<td style="font-size:11px;color:#888">'+f.nit+'</td>'
-      + '<td style="font-size:11px">'+f.fecha+'</td>'
-      + '<td style="font-size:11px;font-weight:600;color:'+dCol+'">'+fvd+'</td>'
-      + '<td style="font-size:11px;color:'+dCol+'">'+dTxt+'</td>'
+      + '<td style="font-size:12px;font-weight:600;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+f.cliente+'">'+f.cliente+'</td>'
+      + '<td>'+tipoBadge(f)+'</td>'
+      + '<td style="font-size:11px;color:#888;white-space:nowrap">'+mesLbl+'</td>'
       + '<td style="text-align:right;font-size:11px;color:#888">'+F(f.bruto)+'</td>'
       + '<td style="text-align:right;font-weight:700;color:#CC1818">'+F(f.total)+'</td>'
       + '<td>'+badgeFact(est)+'</td>'
       + '<td>'
-        + '<button class="btn '+(f.pagada?'bgr':'btn-p')+'" data-id="'+fid+'" style="font-size:10px;padding:3px 8px">'+(f.pagada?'E':'P')+'</button>'
-        + ' <button class="btn btn-del-fact" data-id="'+fid+'" style="font-size:10px;padding:3px 8px;color:#A32D2D;border-color:#f0ccc8" title="Eliminar">&#128465;</button>'
+        + '<button class="btn '+(f.pagada?'bgr':'btn-p')+'" onclick="abrirModalPago('"+fid+"')" style="font-size:10px;padding:3px 8px">'+(f.pagada?'E':'P')+'</button>'
+        + ' <button class="btn btn-del-fact" data-id="'+fid+'" style="font-size:10px;padding:3px 8px;color:#A32D2D;border-color:#f0ccc8">&#128465;</button>'
       + '</td></tr>';
   }
 
   if (!lista.length) {
-    el.innerHTML = res + '<p style="text-align:center;padding:20px;color:#888;font-size:12px">Sin facturas.</p>';
+    el.innerHTML = res + '<p style="text-align:center;padding:20px;color:#888;font-size:12px">Sin facturas con este filtro.</p>';
     return;
   }
 
@@ -7507,14 +7562,14 @@ function renderTablaFact() {
   }
 
   var verMas = rows2
-    ? '<tr id="tr-ver-mas-fact"><td colspan="10" style="text-align:center;padding:10px">'
+    ? '<tr id="tr-ver-mas-fact"><td colspan="8" style="text-align:center;padding:10px">'
       + '<button class="btn" onclick="sgVerMasFact()" style="font-size:11px;background:#f5f4f0;border-color:#ccc;color:#54504F">'
       + '&#9660; Ver ' + (listaOrd.length - LIMIT) + ' facturas m&aacute;s</button></td></tr>'
     : '';
 
   el.innerHTML = res
     + '<div class="tw-wrap"><table>' + thead
-    + '<tbody id="tbody-fact-vis">'  + rows1 + verMas + '</tbody>'
+    + '<tbody>' + rows1 + verMas + '</tbody>'
     + '<tbody id="tbody-fact-rest" style="display:none">' + rows2 + '</tbody>'
     + '</table></div>';
 }
