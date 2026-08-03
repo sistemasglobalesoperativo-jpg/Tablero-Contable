@@ -21251,10 +21251,17 @@ function alzakSyncDrive() {
 
 
 <script>
-// Sistemas Globales — acceso directo sin login
+// Sistemas Globales — acceso directo sin login + auto-sync
 document.addEventListener('DOMContentLoaded', function() {
+  // Ocultar login
   var ls = document.getElementById('login-screen');
   if (ls) ls.style.display = 'none';
+  // Auto-sincronizar al cargar
+  setTimeout(function() {
+    if (typeof alzakCargarDatosSheets === 'function') {
+      alzakCargarDatosSheets();
+    }
+  }, 800);
 });
 </script>
 </body>
