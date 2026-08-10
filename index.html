@@ -657,6 +657,17 @@ tbody tr:hover td{background:var(--cyan-light);}
 
 </div>
 
+<!-- SG: MÓDULO PAGOS PROGRAMADOS/REALIZADOS -->
+<div class="card" style="border:1.5px solid #CC1818;margin-bottom:12px;">
+<div>
+<div style="font-size:10px;font-weight:700;color:#CC1818;letter-spacing:.06em;margin-bottom:2px">💸 PAGOS REALIZADOS</div>
+<div style="font-size:15px;font-weight:700;color:#54504F">Programaci&oacute;n de Pagos &mdash; Egresos mes a mes</div>
+<div style="font-size:11px;color:#888;margin-top:2px">Todo lo pagado &middot; dividido por Efectivo y Banco</div>
+</div>
+<div id="sg-pagos-kpis" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"></div>
+<div id="sg-pagos-chart" style="margin-top:14px"></div>
+</div>
+
 <div id="dash-gastos-bloque" style="margin-bottom:12px">
 
 <div class="card" style="border:1.5px solid #0C447C;margin-bottom:12px;">
@@ -2138,6 +2149,21 @@ function alzakCargarDatosPrincipal(url, callback) {
       console.log('Radicadas:', data.radicadas ? data.radicadas.length : 'vacío', '| Egresos:', data.egresos ? data.egresos.length : 'vacío', '| Facturación:', data.facturacion ? data.facturacion.length : 'vacío');
 
       var cargados = [];
+
+      // SG: Pagos programados/realizados → SG_PAGOS
+      if (data.pagos_prog && data.pagos_prog.length) {
+        window.SG_PAGOS = data.pagos_prog.map(function(r){
+          return {
+            item:    String(r['ITEM']||''),
+            concepto:String(r['CONCEPTO']||''),
+            valor:   alzakParseNum(r['VALOR']||0),
+            fecha:   String(r['DIA DE PAGO']||''),
+            fuente:  String(r['FUENTE']||r['FUENTE ']||'').trim()
+          };
+        });
+        if (typeof sgRenderPagos === 'function') setTimeout(sgRenderPagos, 50);
+        cargados.push(window.SG_PAGOS.length + ' pagos');
+      }
 
       // Facturas Radicadas → FR_DATA
       // Columnas exactas: Fecha, Categoria, Proveedor / Beneficiario, Concepto, N Comprobante, Subtotal (COP), IVA (COP), Total (COP)
@@ -21261,6 +21287,84 @@ function alzakSyncDrive() {
 
 
 <script>
+
+// ══ SG: PAGOS PROGRAMADOS — Efectivo vs Banco ══════════════════
+window.SG_PAGOS = window.SG_PAGOS || [];
+
+function sgRenderPagos() {
+  var kpiEl = g('sg-pagos-kpis'), chEl = g('sg-pagos-chart');
+  if (!kpiEl || !chEl) return;
+  var datos = window.SG_PAGOS || [];
+  if (!datos.length) { kpiEl.innerHTML='<div style="font-size:11px;color:#aaa">Sincroniza para ver los pagos.</div>'; chEl.innerHTML=''; return; }
+
+  var MN=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  var totEfec=0, totBanco=0, mm={};
+
+  for (var i=0;i<datos.length;i++){
+    var p=datos[i];
+    var esEfec=(p.fuente||'').toUpperCase().indexOf('EFECTIVO')>=0;
+    if(esEfec) totEfec+=p.valor; else totBanco+=p.valor;
+    // mes desde fecha dd/MM/yyyy o d/M
+    var mesN=0,anio=2026;
+    if(p.fecha){
+      var fp=String(p.fecha).split('/');
+      if(fp.length>=2){ mesN=parseInt(fp[1])||0; if(fp[2])anio=parseInt(fp[2])||2026; }
+    }
+    if(!mesN)continue;
+    var mk=MN[mesN-1]+' '+anio;
+    if(!mm[mk])mm[mk]={efec:0,banco:0,mes:mesN,anio:anio};
+    if(esEfec)mm[mk].efec+=p.valor; else mm[mk].banco+=p.valor;
+  }
+
+  var totalG = totEfec + totBanco;
+  kpiEl.innerHTML =
+    '<div class="ind" style="flex:1;min-width:150px"><div class="ind-l">Total pagado</div><div class="ind-v" style="color:#CC1818;font-weight:700">'+F(totalG)+'</div><div class="ind-s">'+datos.length+' pagos</div></div>'
+    +'<div class="ind" style="flex:1;min-width:150px"><div class="ind-l" style="color:#854F0B">💵 Efectivo</div><div class="ind-v" style="color:#854F0B;font-weight:700">'+F(totEfec)+'</div><div class="ind-s">'+Math.round(totalG?totEfec/totalG*100:0)+'% del total</div></div>'
+    +'<div class="ind" style="flex:1;min-width:150px"><div class="ind-l" style="color:#1A2B6B">🏦 Banco</div><div class="ind-v" style="color:#1A2B6B;font-weight:700">'+F(totBanco)+'</div><div class="ind-s">'+Math.round(totalG?totBanco/totalG*100:0)+'% del total</div></div>';
+
+  // Chart: dos barras por mes (efectivo + banco)
+  var meses=Object.keys(mm).sort(function(a,b){return mm[a].anio!==mm[b].anio?mm[a].anio-mm[b].anio:mm[a].mes-mm[b].mes;});
+  if(!meses.length){chEl.innerHTML='<div style="font-size:11px;color:#aaa">Sin fechas v&aacute;lidas en los pagos.</div>';return;}
+  var maxV=0;
+  for(var i=0;i<meses.length;i++){var mv=mm[meses[i]];var t=Math.max(mv.efec,mv.banco);if(t>maxV)maxV=t;}
+  maxV=maxV*1.15||1;
+  var nM=meses.length;
+  var W=520,H=140,PL=56,PR=10,PT=14,PB=26;
+  var CW=W-PL-PR,CH=H-PT-PB;
+  var bw=Math.max(7,Math.min(20,CW/nM*0.36));
+  var gap=Math.max(2,bw*0.25);
+  var svg='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:'+H+'px">';
+  for(var t=0;t<=4;t++){
+    var yv=Math.round(PT+CH-(t/4)*CH);
+    var yVal=maxV*t/4;
+    var yLbl=yVal>=1000000?('$'+Math.round(yVal/100000)/10+'M'):('$'+Math.round(yVal/1000)+'k');
+    svg+='<line x1="'+PL+'" y1="'+yv+'" x2="'+(W-PR)+'" y2="'+yv+'" stroke="#ede9e4" stroke-width="1"/>';
+    svg+='<text x="'+(PL-5)+'" y="'+(yv+4)+'" text-anchor="end" font-size="9" fill="#aaa" font-family="Montserrat,sans-serif">'+yLbl+'</text>';
+  }
+  for(var i=0;i<nM;i++){
+    var m=meses[i],md=mm[m];
+    var cx=Math.round(PL+(i+0.5)*(CW/nM));
+    var yBase=PT+CH;
+    var hE=md.efec>0?Math.max(2,Math.round((md.efec/maxV)*CH)):0;
+    var hB=md.banco>0?Math.max(2,Math.round((md.banco/maxV)*CH)):0;
+    if(hE>0)svg+='<rect x="'+(cx-gap/2-bw)+'" y="'+(yBase-hE)+'" width="'+bw+'" height="'+hE+'" fill="#854F0B" rx="2"/>';
+    if(hB>0)svg+='<rect x="'+(cx+gap/2)+'" y="'+(yBase-hB)+'" width="'+bw+'" height="'+hB+'" fill="#1A2B6B" rx="2"/>';
+    var totMes=md.efec+md.banco;
+    var totM=totMes/1000000;
+    var totLbl=totM>=100?Math.round(totM)+'M':totM>=10?(Math.round(totM*10)/10)+'M':totM>=1?(Math.round(totM*100)/100)+'M':('$'+Math.round(totMes/1000)+'k');
+    var yLblV=yBase-Math.max(hE,hB)-5;if(yLblV<PT+8)yLblV=PT+8;
+    svg+='<text x="'+cx+'" y="'+yLblV+'" text-anchor="middle" font-size="9" font-weight="700" fill="#54504F" font-family="Montserrat,sans-serif">$'+totLbl+'</text>';
+    var mesLbl=m.replace(/ \d{4}/,'').substring(0,3);
+    svg+='<text x="'+cx+'" y="'+(H-8)+'" text-anchor="middle" font-size="11" fill="#555" font-family="Montserrat,sans-serif">'+mesLbl+'</text>';
+  }
+  svg+='</svg>';
+  svg+='<div style="display:flex;gap:14px;margin-top:6px;flex-wrap:wrap">'
+    +'<span style="font-size:10px;display:flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:2px;background:#854F0B;display:inline-block"></span>Efectivo</span>'
+    +'<span style="font-size:10px;display:flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:2px;background:#1A2B6B;display:inline-block"></span>Banco</span>'
+    +'</div>';
+  chEl.innerHTML=svg;
+}
+
 // Sistemas Globales — acceso directo sin login + auto-sync
 document.addEventListener('DOMContentLoaded', function() {
   // Ocultar login
