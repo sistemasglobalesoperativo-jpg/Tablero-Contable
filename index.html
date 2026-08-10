@@ -21469,7 +21469,16 @@ function sgRenderPagosDetalle() {
       + '</div>';
     if (abierta) {
       out += '<div style="border-top:1px solid #eee"><table style="width:100%;font-size:11px;border-collapse:collapse">';
-      gr.items.sort(function(a,b){ return (b.valor||0)-(a.valor||0); }).forEach(function(p,i){
+      // Ordenar por fecha (dd/MM/yyyy) ascendente
+      gr.items.sort(function(a,b){
+        function fKey(p){
+          var fp = String(p.fecha||'').split('/');
+          if (fp.length < 2) return 99999999;
+          var dd = parseInt(fp[0])||0, mm = parseInt(fp[1])||0, yy = parseInt(fp[2])||2026;
+          return yy*10000 + mm*100 + dd;
+        }
+        return fKey(a) - fKey(b);
+      }).forEach(function(p,i){
         var esEfec = (p.fuente||'').toUpperCase().indexOf('EFECTIVO') >= 0;
         out += '<tr style="' + (i%2?'background:#fff':'background:#fcfbf9') + '">'
           + '<td style="padding:5px 12px;max-width:280px">' + (p.concepto||'') + '</td>'
