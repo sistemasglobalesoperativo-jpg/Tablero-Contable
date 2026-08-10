@@ -7543,7 +7543,7 @@ function renderTablaFact() {
       + '<td style="text-align:right;font-weight:700;color:#CC1818">'+F(f.total)+'</td>'
       + '<td>'+badgeFact(est)+'</td>'
       + '<td>'
-        + '<button class="btn '+(f.pagada?'bgr':'btn-p')+'" onclick="abrirModalPago('"+fid+"')" style="font-size:10px;padding:3px 8px">'+(f.pagada?'E':'P')+'</button>'
+        + '<button class="btn '+(f.pagada?'bgr':'btn-p')+'" onclick="abrirModalPago(\''+fid+'\')" style="font-size:10px;padding:3px 8px">'+(f.pagada?'E':'P')+'</button>'
         + ' <button class="btn btn-del-fact" data-id="'+fid+'" style="font-size:10px;padding:3px 8px;color:#A32D2D;border-color:#f0ccc8">&#128465;</button>'
       + '</td></tr>';
   }
