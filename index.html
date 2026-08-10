@@ -2129,7 +2129,7 @@ function alzakCargarDatosSheets(callback) {
 
 function alzakCargarDatosPrincipal(url, callback) {
   mostrarToast('🔄 Sincronizando datos desde Google Sheets...', '#0C447C', 4000);
-  fetch(url, { mode: 'cors' })
+  fetch(url, { redirect: 'follow' })
     .then(function(r){ return r.json(); })
     .then(function(data) {
       try {
