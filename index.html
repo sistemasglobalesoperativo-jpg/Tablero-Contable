@@ -666,6 +666,17 @@ tbody tr:hover td{background:var(--cyan-light);}
 </div>
 <div id="sg-pagos-kpis" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"></div>
 <div id="sg-pagos-chart" style="margin-top:14px"></div>
+<div onclick="sgTogglePagosDetalle()" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:#f5f4f0;border-radius:8px;margin-top:14px">
+<span style="font-size:12px;font-weight:700;color:#CC1818">&#128203; Ver detalle de pagos por categor&iacute;a</span>
+<span id="sg-pagos-detalle-ico" style="font-size:11px;color:#888">&#9660;</span>
+</div>
+<div id="sg-pagos-detalle" style="display:none;margin-top:10px">
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+<select id="sg-pagos-fil-mes" onchange="sgRenderPagosDetalle()" style="font-size:12px;border-radius:7px;padding:5px 10px;border:1px solid #d0cec8"><option value="">Todos los meses</option></select>
+<input type="text" id="sg-pagos-fil-q" placeholder="Buscar concepto..." oninput="sgRenderPagosDetalle()" style="font-size:12px;border-radius:7px;padding:5px 10px;border:1px solid #d0cec8;flex:1;min-width:150px">
+</div>
+<div id="sg-pagos-detalle-body"></div>
+</div>
 </div>
 
 <div id="dash-gastos-bloque" style="margin-bottom:12px">
@@ -21363,6 +21374,115 @@ function sgRenderPagos() {
     +'<span style="font-size:10px;display:flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:2px;background:#1A2B6B;display:inline-block"></span>Banco</span>'
     +'</div>';
   chEl.innerHTML=svg;
+}
+
+
+// ══ SG: DETALLE DE PAGOS POR CATEGORÍA (informe Detalle_Pagos_SG_2026) ══
+function sgCatPago(concepto) {
+  var c = String(concepto||'').toUpperCase();
+  if (/COMPUWORKING/.test(c))                                                        return 'ACUERDO COMPUWORKING';
+  if (/BIA|AFINIA|ELECTRICIDAD|ENERGIA ELECTRICA/.test(c))                           return 'ENERG\u00cdA (BIA/AFINIA)';
+  if (/AGUAS DE CARTAGENA|AGUA CARTAGENA/.test(c))                                   return 'AGUA (AGUAS DE CARTAGENA)';
+  if (/ARRIENDO|ALQUILER/.test(c))                                                   return 'ARRIENDOS';
+  if (/COMISION/.test(c))                                                            return 'COMISIONES DE VENTAS';
+  if (/CAMARA/.test(c))                                                              return 'C\u00c1MARAS';
+  if (/GPS|SIM CARD|PLAN DE DATOS|CELULAR|CELULA|DISTRACKER|DISTRAACKER|TIGO|CLARO|INTERNET|DOMINIO/.test(c)) return 'GPS / DATOS / COMUNICACIONES';
+  if (/QUINCENA|SEGURIDAD SOCIAL|DIAS DE TRABAJO|DIAS SR|ARL|DOTACION|JEKNIFER|HONORARIO|NOGUERA|BONO MES|BONO MENSUAL/.test(c)) return 'N\u00d3MINA Y HONORARIOS';
+  if (/LIMPIEZA|LIMPEZA|LIMPIENZA|ESMERALDA|ASEO|CAFETERIA|GASEOSA|CAFE Y AZUCAR/.test(c)) return 'LIMPIEZA / ASEO';
+  if (/COMBUSTIBLE|GASOLINA|TRANSPORTE|PARQUEADERO|PARQUEADER|PARQUEO|PASAJES|FLETE/.test(c)) return 'TRANSPORTE / COMBUSTIBLE';
+  if (/MANO DE OBRA|FUENTE|BANS|CAUCHO|LAVADO|ARREGLO|SOLDAD|PINTURA|ESTUCO|MATERIAL|GATO ZORRA|ANDAMIO|DESMONTAJE|INSTALAC|LLANTA|BATERIA|TECNOMECANIC|HERRAMIENTA|SWITCH|CABLE|DISCO DURO|TELEVISOR|COMPUTADOR/.test(c)) return 'MANTENIMIENTO / COMPRAS / EQUIPO';
+  return 'OTROS GASTOS';
+}
+
+var SG_PAGOS_CAT_ABIERTAS = {};
+
+function sgTogglePagosDetalle() {
+  var p = g('sg-pagos-detalle'), ico = g('sg-pagos-detalle-ico');
+  if (!p) return;
+  var ab = p.style.display !== 'none';
+  p.style.display = ab ? 'none' : 'block';
+  if (ico) ico.innerHTML = ab ? '&#9660;' : '&#9650;';
+  if (!ab) { sgPoblarMesesPagos(); sgRenderPagosDetalle(); }
+}
+
+function sgPoblarMesesPagos() {
+  var sel = g('sg-pagos-fil-mes'); if (!sel || sel.options.length > 1) return;
+  var MN=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  var vistos = {};
+  (window.SG_PAGOS||[]).forEach(function(p){
+    var fp = String(p.fecha||'').split('/');
+    if (fp.length >= 2) { var mn = parseInt(fp[1]); if (mn>=1 && mn<=12) vistos[mn] = true; }
+  });
+  Object.keys(vistos).sort(function(a,b){return a-b;}).forEach(function(mn){
+    var op = document.createElement('option');
+    op.value = mn; op.textContent = MN[mn-1];
+    sel.appendChild(op);
+  });
+}
+
+function sgToggleCatPago(cat) {
+  SG_PAGOS_CAT_ABIERTAS[cat] = !SG_PAGOS_CAT_ABIERTAS[cat];
+  sgRenderPagosDetalle();
+}
+
+function sgRenderPagosDetalle() {
+  var el = g('sg-pagos-detalle-body'); if (!el) return;
+  var datos = window.SG_PAGOS || [];
+  var mesFil = g('sg-pagos-fil-mes') ? g('sg-pagos-fil-mes').value : '';
+  var qFil   = (g('sg-pagos-fil-q') ? g('sg-pagos-fil-q').value : '').toLowerCase();
+
+  var filtrados = datos.filter(function(p){
+    if (mesFil) {
+      var fp = String(p.fecha||'').split('/');
+      if (fp.length < 2 || parseInt(fp[1]) !== parseInt(mesFil)) return false;
+    }
+    if (qFil && String(p.concepto||'').toLowerCase().indexOf(qFil) < 0) return false;
+    return true;
+  });
+
+  if (!filtrados.length) { el.innerHTML = '<p style="text-align:center;padding:16px;color:#888;font-size:12px">Sin pagos con este filtro.</p>'; return; }
+
+  // Agrupar por categoría
+  var grupos = {};
+  filtrados.forEach(function(p){
+    var cat = sgCatPago(p.concepto);
+    if (!grupos[cat]) grupos[cat] = { items: [], total: 0 };
+    grupos[cat].items.push(p);
+    grupos[cat].total += p.valor || 0;
+  });
+
+  var cats = Object.keys(grupos).sort(function(a,b){ return grupos[b].total - grupos[a].total; });
+  var totalG = filtrados.reduce(function(a,p){ return a + (p.valor||0); }, 0);
+  var out = '<div style="font-size:11px;color:#888;margin-bottom:8px"><strong>' + filtrados.length + '</strong> pagos &middot; Total: <strong style="color:#CC1818">' + F(totalG) + '</strong></div>';
+
+  cats.forEach(function(cat){
+    var gr = grupos[cat];
+    var abierta = !!SG_PAGOS_CAT_ABIERTAS[cat];
+    var pct = totalG ? Math.round(gr.total/totalG*100) : 0;
+    var catId = cat.replace(/[^A-Za-z0-9]/g,'_');
+    out += '<div style="background:#faf9f7;border:1px solid #e8e5e0;border-radius:9px;margin-bottom:6px;overflow:hidden">'
+      + '<div onclick="sgToggleCatPago(\'' + cat.replace(/'/g,"\\'") + '\')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;padding:10px 12px">'
+      + '<div><span style="font-size:11px;color:#888;margin-right:6px">' + (abierta?'&#9660;':'&#9654;') + '</span>'
+      + '<span style="font-size:12px;font-weight:700;color:#54504F">' + cat + '</span>'
+      + '<span style="font-size:10px;color:#999;margin-left:8px">' + gr.items.length + ' pagos &middot; ' + pct + '%</span></div>'
+      + '<div style="font-size:13px;font-weight:700;color:#CC1818">' + F(gr.total) + '</div>'
+      + '</div>';
+    if (abierta) {
+      out += '<div style="border-top:1px solid #eee"><table style="width:100%;font-size:11px;border-collapse:collapse">';
+      gr.items.sort(function(a,b){ return (b.valor||0)-(a.valor||0); }).forEach(function(p,i){
+        var esEfec = (p.fuente||'').toUpperCase().indexOf('EFECTIVO') >= 0;
+        out += '<tr style="' + (i%2?'background:#fff':'background:#fcfbf9') + '">'
+          + '<td style="padding:5px 12px;max-width:280px">' + (p.concepto||'') + '</td>'
+          + '<td style="padding:5px 8px;color:#888;white-space:nowrap">' + (p.fecha||'') + '</td>'
+          + '<td style="padding:5px 8px;white-space:nowrap"><span style="font-size:10px;font-weight:700;color:' + (esEfec?'#854F0B':'#1A2B6B') + '">' + (esEfec?'&#128181; Efectivo':'&#127974; Banco') + '</span></td>'
+          + '<td style="padding:5px 12px;text-align:right;font-weight:700;color:#54504F;white-space:nowrap">' + F(p.valor||0) + '</td>'
+          + '</tr>';
+      });
+      out += '</table></div>';
+    }
+    out += '</div>';
+  });
+  el.innerHTML = out;
 }
 
 // Sistemas Globales — acceso directo sin login + auto-sync
