@@ -21433,8 +21433,13 @@ function sgRenderPagos() {
     var yBase=PT+CH;
     var hE=md.efec>0?Math.max(2,Math.round((md.efec/maxV)*CH)):0;
     var hB=md.banco>0?Math.max(2,Math.round((md.banco/maxV)*CH)):0;
-    if(hE>0)svg+='<rect x="'+(cx-gap/2-bw)+'" y="'+(yBase-hE)+'" width="'+bw+'" height="'+hE+'" fill="#854F0B" rx="2"/>';
-    if(hB>0)svg+='<rect x="'+(cx+gap/2)+'" y="'+(yBase-hB)+'" width="'+bw+'" height="'+hB+'" fill="#1A2B6B" rx="2"/>';
+    var selE = window.SG_PAGO_SEL && window.SG_PAGO_SEL.mes===md.mes && window.SG_PAGO_SEL.anio===md.anio && window.SG_PAGO_SEL.fuente==='EFECTIVO';
+    var selB = window.SG_PAGO_SEL && window.SG_PAGO_SEL.mes===md.mes && window.SG_PAGO_SEL.anio===md.anio && window.SG_PAGO_SEL.fuente==='BANCO';
+    if(hE>0)svg+='<rect x="'+(cx-gap/2-bw)+'" y="'+(yBase-hE)+'" width="'+bw+'" height="'+hE+'" fill="#854F0B" rx="2"'+(selE?' stroke="#CC1818" stroke-width="2"':'')+'/>';
+    if(hB>0)svg+='<rect x="'+(cx+gap/2)+'" y="'+(yBase-hB)+'" width="'+bw+'" height="'+hB+'" fill="#1A2B6B" rx="2"'+(selB?' stroke="#CC1818" stroke-width="2"':'')+'/>';
+    // Overlays clicables: mitad izquierda = Efectivo, mitad derecha = Banco
+    svg+='<rect x="'+(cx-CW/nM/2)+'" y="'+PT+'" width="'+(CW/nM/2)+'" height="'+(CH+PB)+'" fill="transparent" style="cursor:pointer" onclick="sgClickPagoChart('+md.mes+','+md.anio+',\'EFECTIVO\')"><title>Efectivo — clic para ver detalle</title></rect>';
+    svg+='<rect x="'+cx+'" y="'+PT+'" width="'+(CW/nM/2)+'" height="'+(CH+PB)+'" fill="transparent" style="cursor:pointer" onclick="sgClickPagoChart('+md.mes+','+md.anio+',\'BANCO\')"><title>Banco — clic para ver detalle</title></rect>';
     var totMes=md.efec+md.banco;
     var totM=totMes/1000000;
     var totLbl=totM>=100?Math.round(totM)+'M':totM>=10?(Math.round(totM*10)/10)+'M':totM>=1?(Math.round(totM*100)/100)+'M':('$'+Math.round(totMes/1000)+'k');
@@ -21506,6 +21511,29 @@ function sgClickMesChart(mes, anio) {
   }
 }
 
+
+// ══ SG: CLIC EN CHART DE PAGOS — filtra detalle por mes y fuente ══
+window.SG_PAGO_SEL = null;
+
+function sgClickPagoChart(mes, anio, fuente) {
+  if (window.SG_PAGO_SEL && window.SG_PAGO_SEL.mes===mes && window.SG_PAGO_SEL.anio===anio && window.SG_PAGO_SEL.fuente===fuente) {
+    window.SG_PAGO_SEL = null;
+  } else {
+    window.SG_PAGO_SEL = { mes: mes, anio: anio, fuente: fuente };
+  }
+  // Abrir el detalle si está cerrado
+  var p = g('sg-pagos-detalle'), ico = g('sg-pagos-detalle-ico');
+  if (p && p.style.display === 'none' && window.SG_PAGO_SEL) {
+    p.style.display = 'block';
+    if (ico) ico.innerHTML = '&#9650;';
+    sgPoblarMesesPagos();
+  }
+  // Re-render: chart (highlight) + detalle (filtro)
+  if (typeof sgRenderPagos === 'function') sgRenderPagos();
+  if (typeof sgRenderPagosDetalle === 'function') sgRenderPagosDetalle();
+  if (window.SG_PAGO_SEL && p) setTimeout(function(){ p.scrollIntoView({behavior:'smooth', block:'start'}); }, 100);
+}
+
 // ══ SG: DETALLE DE PAGOS POR CATEGORÍA (informe Detalle_Pagos_SG_2026) ══
 function sgCatPago(concepto) {
   var c = String(concepto||'').toUpperCase();
@@ -21561,6 +21589,16 @@ function sgRenderPagosDetalle() {
   var qFil   = (g('sg-pagos-fil-q') ? g('sg-pagos-fil-q').value : '').toLowerCase();
 
   var filtrados = datos.filter(function(p){
+    // Filtro por clic en barra del chart (mes + fuente)
+    if (window.SG_PAGO_SEL) {
+      var fpS = String(p.fecha||'').split('/');
+      if (fpS.length < 2) return false;
+      var mnS = parseInt(fpS[1]), yrS = fpS[2] ? parseInt(fpS[2]) : 2026;
+      if (mnS !== window.SG_PAGO_SEL.mes || yrS !== window.SG_PAGO_SEL.anio) return false;
+      var esEfecS = (p.fuente||'').toUpperCase().indexOf('EFECTIVO') >= 0;
+      if (window.SG_PAGO_SEL.fuente === 'EFECTIVO' && !esEfecS) return false;
+      if (window.SG_PAGO_SEL.fuente === 'BANCO' && esEfecS) return false;
+    }
     if (mesFil) {
       var fp = String(p.fecha||'').split('/');
       if (fp.length < 2 || parseInt(fp[1]) !== parseInt(mesFil)) return false;
@@ -21582,7 +21620,16 @@ function sgRenderPagosDetalle() {
 
   var cats = Object.keys(grupos).sort(function(a,b){ return grupos[b].total - grupos[a].total; });
   var totalG = filtrados.reduce(function(a,p){ return a + (p.valor||0); }, 0);
-  var out = '<div style="font-size:11px;color:#888;margin-bottom:8px"><strong>' + filtrados.length + '</strong> pagos &middot; Total: <strong style="color:#CC1818">' + F(totalG) + '</strong></div>';
+  var chipPago = '';
+  if (window.SG_PAGO_SEL) {
+    var MNP=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    var esE = window.SG_PAGO_SEL.fuente === 'EFECTIVO';
+    chipPago = '<div style="display:inline-flex;align-items:center;gap:8px;background:'+(esE?'#854F0B':'#1A2B6B')+';color:#fff;border-radius:20px;padding:5px 14px;font-size:12px;font-weight:700;margin-bottom:10px">'
+      + (esE?'&#128181; Efectivo':'&#127974; Banco') + ' &middot; ' + MNP[window.SG_PAGO_SEL.mes-1] + ' ' + window.SG_PAGO_SEL.anio
+      + '<span onclick="sgClickPagoChart(' + window.SG_PAGO_SEL.mes + ',' + window.SG_PAGO_SEL.anio + ',\'' + window.SG_PAGO_SEL.fuente + '\')" style="cursor:pointer;background:rgba(255,255,255,.25);border-radius:50%;width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;font-size:11px">&#10005;</span>'
+      + '</div>';
+  }
+  var out = chipPago + '<div style="font-size:11px;color:#888;margin-bottom:8px"><strong>' + filtrados.length + '</strong> pagos &middot; Total: <strong style="color:#CC1818">' + F(totalG) + '</strong></div>';
 
   cats.forEach(function(cat){
     var gr = grupos[cat];
