@@ -9439,8 +9439,18 @@ function renderCarteraHome() {
     '<div class="ind" style="border:1.5px solid rgba(153,60,29,.25)"><div class="ind-l" style="color:#993C1D">Total a recibir</div><div class="ind-v" style="color:#993C1D;font-weight:700">'+F(dNeto)+'</div><div class="ind-s">Neto después retenciones</div></div>'+
     (function(){
       var fPend = FACTURAS.filter(function(f){ return !f.pagada; });
+      var lblMes = '';
+      // Respetar el mes seleccionado en el chart (clic en barra)
+      if (window.SG_MES_SEL && typeof sgMesAnioFact === 'function') {
+        fPend = fPend.filter(function(f){
+          var _ma = sgMesAnioFact(f);
+          return _ma && _ma.mes === window.SG_MES_SEL.mes && _ma.anio === window.SG_MES_SEL.anio;
+        });
+        var MNK=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+        lblMes = ' · ' + MNK[window.SG_MES_SEL.mes-1] + ' ' + window.SG_MES_SEL.anio;
+      }
       var carteraPend = fPend.reduce(function(a,f){ return a+(f.total||0); }, 0);
-      return '<div class="ind" style="border:1.5px solid rgba(226,75,74,.35);background:#fff9f9"><div class="ind-l" style="color:#A32D2D">🧾 Cartera pendiente</div><div class="ind-v" style="color:#A32D2D;font-weight:700">'+F(carteraPend)+'</div><div class="ind-s">'+fPend.length+' facturas por cobrar</div></div>';
+      return '<div class="ind" style="border:1.5px solid rgba(226,75,74,.35);background:#fff9f9"><div class="ind-l" style="color:#A32D2D">🧾 Cartera pendiente'+lblMes+'</div><div class="ind-v" style="color:#A32D2D;font-weight:700">'+F(carteraPend)+'</div><div class="ind-s">'+fPend.length+' facturas por cobrar'+lblMes+'</div></div>';
     })()+
     '<div class="ind"><div class="ind-l">% Recaudo</div><div class="ind-v '+(pct>70?'tg':pct>30?'tw':'tr')+'">'+pct+'%</div><div style="height:4px;background:#e0ddd8;border-radius:2px;overflow:hidden;margin-top:5px"><div style="height:100%;background:'+(pct>70?'#1D9E75':pct>30?'#EF9F27':'#E24B4A')+';border-radius:2px;width:'+pct+'%"></div></div></div>';
 
