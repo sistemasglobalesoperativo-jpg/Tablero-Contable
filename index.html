@@ -2341,6 +2341,11 @@ function alzakCargarDatosPrincipal(url, callback) {
               var fechaISO = '';
               var dp = (f.fecha_raw || f.fecha || '').split('/');
               if (dp.length === 3) fechaISO = dp[2]+'-'+dp[1]+'-'+dp[0];
+              // SG: sin fecha exacta → usar campo Mes ("SEPTIEMBRE", "Septiembre 2026"...)
+              if (!fechaISO && typeof sgMesAnioFact === 'function') {
+                var _ma = sgMesAnioFact(f);
+                if (_ma) fechaISO = _ma.anio + '-' + (_ma.mes < 10 ? '0' : '') + _ma.mes + '-01';
+              }
               var mes = fechaISO ? parseInt(fechaISO.split('-')[1]||'1') : 1;
               var entry = { cliente: f.cliente||'', proyecto: f.concepto||'', monto: f.bruto||0, fecha: fechaISO, obs: 'Sheet Facturación', _fromSheet: true };
               for (var m=0; m<12; m++) entry['m'+(m+1)] = 0;
@@ -7330,6 +7335,11 @@ function factFiltrarLista() {
   if (!eFil && FACT_FILTRO && FACT_FILTRO !== 'todas') eFil = FACT_FILTRO;
 
   return FACTURAS.filter(function(f) {
+    // Filtro por mes seleccionado en el chart (clic en barra)
+    if (window.SG_MES_SEL) {
+      var _ma = sgMesAnioFact(f);
+      if (!_ma || _ma.mes !== window.SG_MES_SEL.mes || _ma.anio !== window.SG_MES_SEL.anio) return false;
+    }
     // Filtro cliente
     if (cFil && f.cliente !== cFil) return false;
 
@@ -7527,7 +7537,15 @@ function renderTablaFact() {
   var tS = lista.reduce(function(a,f){return a+(f.total||0);},0);
   var cS = lista.filter(function(f){return f.pagada;}).reduce(function(a,f){return a+(f.total||0);},0);
 
-  var res = '<div style="display:flex;gap:16px;flex-wrap:wrap;padding:8px 12px;background:#f5f4f0;border-radius:8px;margin-bottom:10px;font-size:12px">'
+  var chipMes = '';
+  if (window.SG_MES_SEL) {
+    var MNC=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    chipMes = '<div style="display:inline-flex;align-items:center;gap:8px;background:#CC1818;color:#fff;border-radius:20px;padding:5px 14px;font-size:12px;font-weight:700;margin-bottom:10px">'
+      + '&#128197; ' + MNC[window.SG_MES_SEL.mes-1] + ' ' + window.SG_MES_SEL.anio
+      + '<span onclick="sgClickMesChart(' + window.SG_MES_SEL.mes + ',' + window.SG_MES_SEL.anio + ')" style="cursor:pointer;background:rgba(255,255,255,.25);border-radius:50%;width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;font-size:11px">&#10005;</span>'
+      + '</div>';
+  }
+  var res = chipMes + '<div style="display:flex;gap:16px;flex-wrap:wrap;padding:8px 12px;background:#f5f4f0;border-radius:8px;margin-bottom:10px;font-size:12px">'
     + '<span><strong>' + lista.length + '</strong> facturas</span>'
     + '<span style="color:#CC1818">Facturado: <strong>' + F(tS) + '</strong></span>'
     + '<span style="color:#1D9E75">Pagado: <strong>' + F(cS) + '</strong></span>'
@@ -9419,6 +9437,11 @@ function renderCarteraHome() {
     /* SG: sin retefuente — régimen simple */
     '<div class="ind"><div class="ind-l" style="color:#3C3489">Rte. IVA 15%</div><div class="ind-v" style="color:#3C3489;font-weight:700">−'+F(dRteIVA)+'</div><div class="ind-s">15% del IVA</div></div>'+
     '<div class="ind" style="border:1.5px solid rgba(153,60,29,.25)"><div class="ind-l" style="color:#993C1D">Total a recibir</div><div class="ind-v" style="color:#993C1D;font-weight:700">'+F(dNeto)+'</div><div class="ind-s">Neto después retenciones</div></div>'+
+    (function(){
+      var fPend = FACTURAS.filter(function(f){ return !f.pagada; });
+      var carteraPend = fPend.reduce(function(a,f){ return a+(f.total||0); }, 0);
+      return '<div class="ind" style="border:1.5px solid rgba(226,75,74,.35);background:#fff9f9"><div class="ind-l" style="color:#A32D2D">🧾 Cartera pendiente</div><div class="ind-v" style="color:#A32D2D;font-weight:700">'+F(carteraPend)+'</div><div class="ind-s">'+fPend.length+' facturas por cobrar</div></div>';
+    })()+
     '<div class="ind"><div class="ind-l">% Recaudo</div><div class="ind-v '+(pct>70?'tg':pct>30?'tw':'tr')+'">'+pct+'%</div><div style="height:4px;background:#e0ddd8;border-radius:2px;overflow:hidden;margin-top:5px"><div style="height:100%;background:'+(pct>70?'#1D9E75':pct>30?'#EF9F27':'#E24B4A')+';border-radius:2px;width:'+pct+'%"></div></div></div>';
 
   // Barras mes a mes
@@ -9445,7 +9468,11 @@ function renderCarteraHome() {
         var nombre=parts[0].toUpperCase();
         // quitar acentos comunes
         nombre=nombre.replace('É','E').replace('Á','A').replace('Í','I').replace('Ó','O').replace('Ú','U');
-        _mes=MNU.indexOf(nombre)+1;
+        // Matching por prefijo 3 letras — tolera typos: AGOTO, SETIEMBRE, etc.
+        var pref=nombre.substring(0,3);
+        if(pref==='SET')pref='SEP';
+        var PREF3=['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC'];
+        _mes=PREF3.indexOf(pref)+1;
         _anio=parts[1]?parseInt(parts[1]):new Date().getFullYear();
       }
       if((!_mes||!_anio)&&f.fecha_raw){
@@ -9480,7 +9507,7 @@ function renderCarteraHome() {
       var meses=Object.keys(mm).sort(function(a,b){return mm[a].anio!==mm[b].anio?mm[a].anio-mm[b].anio:mm[a].mes-mm[b].mes;});
       if(!meses.length)return '<div style="font-size:11px;color:#aaa;padding:10px 0">'+titulo+': sin datos por mes</div>';
       var maxV=0;
-      for(var i=0;i<meses.length;i++){var tv=mm[meses[i]].total;if(tv>maxV)maxV=tv;}
+      for(var i=0;i<meses.length;i++){var mv=mm[meses[i]];var tv=mv.total+(mv.programada||0);if(tv>maxV)maxV=tv;}
       maxV=maxV*1.15||1;
       var nM=meses.length;
       var W=500,H=130,PL=52,PR=10,PT=14,PB=26;
@@ -9499,19 +9526,35 @@ function renderCarteraHome() {
         var m=meses[i],md=mm[m];
         var cx=Math.round(PL+(i+0.5)*(CW/nM));
         var yBase=PT+CH;
+        // Highlight si este mes está seleccionado
+        var selMes = window.SG_MES_SEL && window.SG_MES_SEL.mes===md.mes && window.SG_MES_SEL.anio===md.anio;
+        if(selMes) svg+='<rect x="'+(cx-CW/nM/2+2)+'" y="'+(PT-4)+'" width="'+(CW/nM-4)+'" height="'+(CH+PB-4)+'" fill="#CC1818" opacity="0.08" rx="5"/>';
         var hC=Math.round((md.cobrado/maxV)*CH);
         var hP=Math.round((md.pendiente/maxV)*CH);
         var hV=Math.round((md.vencida/maxV)*CH);
         if(hV>0)svg+='<rect x="'+(cx-bw/2)+'" y="'+(yBase-hV)+'" width="'+bw+'" height="'+hV+'" fill="#E24B4A" rx="2"/>';
         if(hP>0)svg+='<rect x="'+(cx-bw/2)+'" y="'+(yBase-hV-hP)+'" width="'+bw+'" height="'+hP+'" fill="#EF9F27"/>';
         if(hC>0)svg+='<rect x="'+(cx-bw/2)+'" y="'+(yBase-hV-hP-hC)+'" width="'+bw+'" height="'+hC+'" fill="#1D9E75" rx="2"/>';
-        var totM=md.total/1000000;
-        var totLbl=totM>=100?Math.round(totM)+'M':totM>=10?(Math.round(totM*10)/10)+'M':totM>=1?(Math.round(totM*100)/100)+'M':('$'+Math.round(md.total/1000)+'k');
-        var hTot=hV+hP+hC;
+        // Barra programada — morado punteado encima de las reales
+        var hProg=(md.programada||0)>0?Math.max(2,Math.round(((md.programada||0)/maxV)*CH)):0;
+        if(hProg>0){
+          var yProg=yBase-hV-hP-hC-hProg;
+          svg+='<rect x="'+(cx-bw/2)+'" y="'+yProg+'" width="'+bw+'" height="'+hProg+'" fill="#7C3AED" opacity="0.3" rx="2"/>';
+          svg+='<rect x="'+(cx-bw/2)+'" y="'+yProg+'" width="'+bw+'" height="'+hProg+'" fill="none" stroke="#7C3AED" stroke-width="1.5" stroke-dasharray="4,3" rx="2"/>';
+        }
+        var totM=(md.total+(md.programada||0))/1000000;
+        var totConProg=md.total+(md.programada||0);
+        var totLbl=totM>=100?Math.round(totM)+'M':totM>=10?(Math.round(totM*10)/10)+'M':totM>=1?(Math.round(totM*100)/100)+'M':('$'+Math.round(totConProg/1000)+'k');
+        var hTot=hV+hP+hC+hProg;
         var yLblV=yBase-hTot-5;if(yLblV<PT+8)yLblV=PT+8;
-        svg+='<text x="'+cx+'" y="'+yLblV+'" text-anchor="middle" font-size="9" font-weight="700" fill="#54504F" font-family="Montserrat,sans-serif">$'+totLbl+'</text>';
+        var soloProg=(md.total===0&&(md.programada||0)>0);
+        svg+='<text x="'+cx+'" y="'+yLblV+'" text-anchor="middle" font-size="9" font-weight="700" fill="'+(soloProg?'#7C3AED':'#54504F')+'" font-family="Montserrat,sans-serif">$'+totLbl+'</text>';
         var mesLbl=m.replace(/ \d{4}/,'').substring(0,3);
-        svg+='<text x="'+cx+'" y="'+(H-8)+'" text-anchor="middle" font-size="11" fill="#555" font-family="Montserrat,sans-serif">'+mesLbl+'</text>';
+        var mesW=(selMes?'700':'400');
+        var mesC=(selMes?'#CC1818':'#555');
+        svg+='<text x="'+cx+'" y="'+(H-8)+'" text-anchor="middle" font-size="11" font-weight="'+mesW+'" fill="'+mesC+'" font-family="Montserrat,sans-serif">'+mesLbl+'</text>';
+        // Overlay transparente clicable — filtra la tabla por este mes
+        svg+='<rect x="'+(cx-CW/nM/2)+'" y="'+PT+'" width="'+(CW/nM)+'" height="'+(CH+PB)+'" fill="transparent" style="cursor:pointer" onclick="sgClickMesChart('+md.mes+','+md.anio+')"><title>Clic para filtrar facturas de '+m+'</title></rect>';
       }
       svg+='</svg>';
       return svg;
@@ -9520,13 +9563,35 @@ function renderCarteraHome() {
     var facOper=FACTURAS.filter(function(f){return !sgEsEspecial(f);});
     var facEspec=FACTURAS.filter(function(f){return sgEsEspecial(f);});
 
+    var mmOper=sgAgrupar(facOper);
+    var mmEspec=sgAgrupar(facEspec);
+
+    // ── Facturación Programada (FP_DATA) → barras moradas punteadas ──
+    if(typeof FP_DATA!=='undefined'&&FP_DATA.length){
+      FP_DATA.forEach(function(fp){
+        var monto=parseFloat(fp.monto)||0;
+        if(!monto||!fp.fecha)return;
+        var fpd=String(fp.fecha).split('-');
+        var fMes=parseInt(fpd[1]||0),fAnio=parseInt(fpd[0]||0);
+        if(!fMes||!fAnio)return;
+        var mk=MN[fMes-1]+' '+fAnio;
+        // Clasificar: canje/camilo/pharmaser → chart especial; resto → operacional
+        var esEsp=sgEsEspecial({tipo:'',cliente:fp.cliente||'',num:''});
+        var mmDest=esEsp?mmEspec:mmOper;
+        if(!mmDest[mk])mmDest[mk]={total:0,cobrado:0,pendiente:0,vencida:0,programada:0,mes:fMes,anio:fAnio};
+        if(!mmDest[mk].programada)mmDest[mk].programada=0;
+        mmDest[mk].programada+=monto;
+      });
+    }
+
     var htmlCharts='';
-    htmlCharts+=sgDibujarChart(sgAgrupar(facOper),'📺 Publicidad · GPS · Cámaras','#1A2B6B');
-    htmlCharts+=sgDibujarChart(sgAgrupar(facEspec),'🤝 Canje · Camilo · Pharmaser','#CC1818');
+    htmlCharts+=sgDibujarChart(mmOper,'📺 Publicidad · GPS · Cámaras','#1A2B6B');
+    htmlCharts+=sgDibujarChart(mmEspec,'🤝 Canje · Camilo · Pharmaser','#CC1818');
     htmlCharts+='<div style="display:flex;gap:14px;margin-top:6px;flex-wrap:wrap">'
       +'<span style="font-size:10px;display:flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:2px;background:#1D9E75;display:inline-block"></span>Pagado</span>'
       +'<span style="font-size:10px;display:flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:2px;background:#EF9F27;display:inline-block"></span>Pendiente</span>'
       +'<span style="font-size:10px;display:flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:2px;background:#E24B4A;display:inline-block"></span>Vencida</span>'
+      +'<span style="font-size:10px;display:flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:2px;background:#7C3AED;opacity:0.4;border:1.5px dashed #7C3AED;display:inline-block"></span>Programada</span>'
       +'</div>';
     barEl.innerHTML=htmlCharts;
 
@@ -21376,6 +21441,60 @@ function sgRenderPagos() {
   chEl.innerHTML=svg;
 }
 
+
+
+// ══ SG: FILTRO POR CLIC EN BARRA DEL CHART ══════════════════════
+window.SG_MES_SEL = null;
+
+function sgMesAnioFact(f) {
+  var _mes=0,_anio=0;
+  var mRaw=String(f['Mes']||f['mes']||'').trim();
+  if(mRaw){
+    var parts=mRaw.split(/\s+/);
+    var nombre=parts[0].toUpperCase()
+      .replace('É','E').replace('Á','A').replace('Í','I').replace('Ó','O').replace('Ú','U');
+    var pref=nombre.substring(0,3);
+    if(pref==='SET')pref='SEP';
+    var PREF3=['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC'];
+    _mes=PREF3.indexOf(pref)+1;
+    _anio=parts[1]?parseInt(parts[1]):new Date().getFullYear();
+  }
+  if((!_mes||!_anio)&&f.fecha_raw){
+    var _p=String(f.fecha_raw).split('/');
+    if(_p.length===3){_mes=parseInt(_p[1]);_anio=parseInt(_p[2]);}
+  }
+  if((!_mes||!_anio)&&f.fecha&&String(f.fecha).indexOf('-')>=0){
+    var _dp=String(f.fecha).split('-');_mes=parseInt(_dp[1]);_anio=parseInt(_dp[0]);
+  }
+  if(!_mes||!_anio)return null;
+  return {mes:_mes,anio:_anio};
+}
+
+function sgClickMesChart(mes, anio) {
+  // Toggle: mismo mes → quitar filtro
+  if (window.SG_MES_SEL && window.SG_MES_SEL.mes===mes && window.SG_MES_SEL.anio===anio) {
+    window.SG_MES_SEL = null;
+  } else {
+    window.SG_MES_SEL = { mes: mes, anio: anio };
+  }
+  // Abrir el panel de detalle si está cerrado
+  var panel = g('panel-detalle-fact');
+  if (panel && panel.style.display === 'none' && window.SG_MES_SEL) {
+    panel.style.display = 'block';
+    var ico = g('ico-detalle-fact');
+    if (ico) ico.style.transform = 'rotate(180deg)';
+    if (typeof poblarSelectClientes === 'function') poblarSelectClientes();
+    if (typeof renderDetalleFact === 'function') renderDetalleFact();
+  }
+  // Re-render: chart (highlight) + tabla (filtro)
+  if (typeof renderCarteraHome === 'function') renderCarteraHome();
+  if (typeof renderTablaFact === 'function') renderTablaFact();
+  // Scroll a la tabla al aplicar filtro
+  if (window.SG_MES_SEL) {
+    var tEl = g('dash-cartera-tabla');
+    if (tEl) setTimeout(function(){ tEl.scrollIntoView({behavior:'smooth', block:'start'}); }, 100);
+  }
+}
 
 // ══ SG: DETALLE DE PAGOS POR CATEGORÍA (informe Detalle_Pagos_SG_2026) ══
 function sgCatPago(concepto) {
