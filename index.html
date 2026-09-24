@@ -6871,6 +6871,63 @@ function verDetalle(id) {
 
 }
 
+// ── SG: helpers centrales de clasificación de facturas ──────────────────────
+// Mes actual del sistema (1=Ene … 12=Dic) — se usa para separar real vs proyectado
+var SG_MES_ACTUAL = (function(){
+  return new Date().getMonth() + 1; // JS: 0-based
+})();
+
+var SG_MESES_ORD = {
+  ENERO:1,FEBRERO:2,MARZO:3,ABRIL:4,MAYO:5,JUNIO:6,
+  JULIO:7,AGOSTO:8,SEPTIEMBRE:9,OCTUBRE:10,NOVIEMBRE:11,DICIEMBRE:12
+};
+
+// Bancos reales (transferencia bancaria) — excluye EFECTIVO, CANJE, SEÑOR CAMILO
+var SG_BANCOS_REALES = {
+  'BANCOLOMBIA':1,'SUDAMERIS':1,'DAVIVIENDA':1,'BOLD':1,
+  'BANCOLOMBIA / EFECTIVO':1,'SUDAMERIS / EFECTIVO':1
+};
+
+function sgNormMes(m) {
+  m = String(m||'').trim().toUpperCase();
+  var keys = Object.keys(SG_MESES_ORD);
+  for (var i=0; i<keys.length; i++) if (m.indexOf(keys[i].substring(0,3))===0) return keys[i];
+  return null;
+}
+
+function sgMesNum(f) {
+  var m = sgNormMes(f.mes || f['Mes'] || '');
+  return m ? SG_MESES_ORD[m] : 0;
+}
+
+// ¿La factura es del mes actual o anterior? (no futura)
+function sgEsReal(f) {
+  var n = sgMesNum(f);
+  return n > 0 && n <= SG_MES_ACTUAL;
+}
+
+// ¿La factura es electrónica?
+// Regla: tiene código FESG → electrónica con consecutivo
+//        vacía/null + banco real → electrónica sin consecutivo (transferencia)
+//        EFECTIVO + banco real   → mixto, contar como electrónica sin consecutivo
+function sgEsElectronica(f) {
+  var num   = String(f.num || f.factura || '').trim().toUpperCase();
+  var banco = String(f.banco || '').trim().toUpperCase();
+  // Con código FESG
+  if (num.indexOf('FESG') === 0) return true;
+  if (num.indexOf('FE') === 0 && num.length > 3 && /\d/.test(num[2])) return true;
+  // Sin número (vacío o EFECTIVO) + banco real → electrónica sin consecutivo
+  var sinNum = (num === '' || num === 'NAN' || num === 'UNDEFINED' || num === 'EFECTIVO');
+  if (sinNum && SG_BANCOS_REALES[banco]) return true;
+  return false;
+}
+
+// ¿Es efectivo puro? → no es electrónica
+function sgEsEfectivo(f) {
+  return !sgEsElectronica(f);
+}
+// ────────────────────────────────────────────────────────────────────────────
+
 function renderFacturas() {
 
   poblarSelectClientes();
@@ -6911,8 +6968,8 @@ function renderFacturas() {
   var kp = g('fact-kpis');
   if (kp) kp.innerHTML =
     (function(){
-      var facElec2 = FACTURAS.filter(function(f){ return (f.num||'').toUpperCase()!=='EFECTIVO' && (f.cliente||'').toUpperCase()!=='EFECTIVO'; });
-      var facEfec2 = FACTURAS.filter(function(f){ return (f.num||'').toUpperCase()==='EFECTIVO' || (f.cliente||'').toUpperCase()==='EFECTIVO'; });
+      var facElec2 = FACTURAS.filter(function(f){ return sgEsReal(f) && sgEsElectronica(f); });
+      var facEfec2 = FACTURAS.filter(function(f){ return sgEsReal(f) && sgEsEfectivo(f); });
       var brElec = facElec2.reduce(function(a,f){return a+(f.bruto||0);},0);
       var brEfec = facEfec2.reduce(function(a,f){return a+(f.bruto||0);},0);
       return '<div class="met"><div class="met-l" style="color:#888">Base gravable (electrónica)</div><div class="met-v tb">'+F(brElec)+'</div><div class="met-s">'+facElec2.length+' facturas electrónicas</div></div>'+
@@ -9401,23 +9458,26 @@ function renderCarteraHome() {
     return;
   }
 
-  var total    = FACTURAS.reduce(function(a,f){return a+f.total;},0);
+  // Solo facturas del mes actual hacia atrás (excluir proyectadas)
+  var FACT_REALES = FACTURAS.filter(function(f){ return sgEsReal(f); });
 
-  var cobrado  = FACTURAS.filter(function(f){return f.pagada;}).reduce(function(a,f){return a+f.total;},0);
+  var total    = FACT_REALES.reduce(function(a,f){return a+f.total;},0);
+
+  var cobrado  = FACT_REALES.filter(function(f){return f.pagada;}).reduce(function(a,f){return a+f.total;},0);
 
   var pendiente= total-cobrado, pct=total?Math.round(cobrado/total*100):0;
 
-  var vencidas = FACTURAS.filter(function(f){return !f.pagada&&estadoFact(f)==='vencida';});
+  var vencidas = FACT_REALES.filter(function(f){return !f.pagada&&estadoFact(f)==='vencida';});
 
   // KPIs
 
   var kp=g('dash-fact-kpis');
 
-  // Totales tributarios para el dashboard
-  var dBruto   = FACTURAS.reduce(function(a,f){return a+(f.bruto||0);},0);
-  var dIVA     = FACTURAS.reduce(function(a,f){return a+(f.iva||0);},0);
-  var dRteF    = FACTURAS.reduce(function(a,f){return a+(f.retefuente||0);},0);
-  var dRteIVA  = FACTURAS.reduce(function(a,f){return a+(f.reteiva||0);},0);
+  // Totales tributarios para el dashboard (solo reales)
+  var dBruto   = FACT_REALES.reduce(function(a,f){return a+(f.bruto||0);},0);
+  var dIVA     = FACT_REALES.reduce(function(a,f){return a+(f.iva||0);},0);
+  var dRteF    = FACT_REALES.reduce(function(a,f){return a+(f.retefuente||0);},0);
+  var dRteIVA  = FACT_REALES.reduce(function(a,f){return a+(f.reteiva||0);},0);
   var dNeto    = dBruto + dIVA - dRteIVA; // SG: sin retefuente
 
   var gridCols = 'repeat(6,1fr)';
@@ -9425,14 +9485,16 @@ function renderCarteraHome() {
 
   if(kp)kp.innerHTML=
     (function(){
-      var facElec = FACTURAS.filter(function(f){ return (f.num||'').toUpperCase()!=='EFECTIVO' && (f.cliente||'').toUpperCase()!=='EFECTIVO'; });
-      var facEfec = FACTURAS.filter(function(f){ return (f.num||'').toUpperCase()==='EFECTIVO' || (f.cliente||'').toUpperCase()==='EFECTIVO'; });
+      var facElec = FACTURAS.filter(function(f){ return sgEsReal(f) && sgEsElectronica(f); });
+      var facEfec = FACTURAS.filter(function(f){ return sgEsReal(f) && sgEsEfectivo(f); });
+      var facElecFESG   = facElec.filter(function(f){ return String(f.num||f.factura||'').toUpperCase().indexOf('FESG')===0; });
+      var facElecSinNum = facElec.filter(function(f){ return String(f.num||f.factura||'').toUpperCase().indexOf('FESG')!==0; });
       var brutoElec = facElec.reduce(function(a,f){return a+(f.bruto||0);},0);
       var brutoEfec = facEfec.reduce(function(a,f){return a+(f.bruto||0);},0);
-      var ingresoTotal = dBruto; // electronico + efectivo
+      var ingresoTotal = brutoElec + brutoEfec;
       window._SG_BRUTO_ELEC = brutoElec;
       window._SG_BRUTO_EFEC = brutoEfec;
-      return '<div class="ind"><div class="ind-l">Base gravable (electrónica)</div><div class="ind-v tb">'+F(brutoElec)+'</div><div class="ind-s">'+facElec.length+' facturas electrónicas</div></div>'+
+      return '<div class="ind"><div class="ind-l">Base gravable (electrónica + transferencia)</div><div class="ind-v tb">'+F(brutoElec)+'</div><div class="ind-s">'+facElecFESG.length+' con FESG · '+facElecSinNum.length+' sin consecutivo</div></div>'+
              '<div class="ind"><div class="ind-l" style="color:#CC1818">💵 Ingreso efectivo</div><div class="ind-v" style="color:#CC1818;font-weight:700">'+F(brutoEfec)+'</div><div class="ind-s">'+facEfec.length+' registros en efectivo</div></div>'+
              '<div class="ind" style="border:1.5px solid rgba(204,24,24,.2)"><div class="ind-l" style="color:#1A2B6B">📊 Ingreso operacional total</div><div class="ind-v" style="color:#1A2B6B;font-weight:700">'+F(ingresoTotal)+'</div><div class="ind-s">Electrónica + Efectivo</div></div>';
     })()+
@@ -10080,18 +10142,24 @@ function renderResumenTablero() {
     return 'otro';
   }
 
-  var facOper    = FACTURAS.filter(function(f){ return sgGrupoFact(f)==='operacional'; });
-  var facEspec   = FACTURAS.filter(function(f){ return sgGrupoFact(f)==='especial'; });
-  var facOtro    = FACTURAS.filter(function(f){ return sgGrupoFact(f)==='otro'; });
+  // Solo facturas reales (excluir meses futuros/proyectados)
+  var FACT_R = FACTURAS.filter(function(f){ return sgEsReal(f); });
+  // Facturas proyectadas (meses futuros)
+  var FACT_PROY = FACTURAS.filter(function(f){ return sgMesNum(f) > SG_MES_ACTUAL; });
+
+  var facOper    = FACT_R.filter(function(f){ return sgGrupoFact(f)==='operacional'; });
+  var facEspec   = FACT_R.filter(function(f){ return sgGrupoFact(f)==='especial'; });
+  var facOtro    = FACT_R.filter(function(f){ return sgGrupoFact(f)==='otro'; });
 
   var totalOper  = facOper.reduce(function(a,f){ return a+(f.bruto||0); }, 0);
   var totalEspec = facEspec.reduce(function(a,f){ return a+(f.bruto||0); }, 0);
   var totalOtro  = facOtro.reduce(function(a,f){ return a+(f.bruto||0); }, 0);
 
-  var totalFact  = FACTURAS.reduce(function(a,f){ return a+(f.bruto||0); }, 0);
-  var totalCobrado= FACTURAS.filter(function(f){return f.pagada;}).reduce(function(a,f){return a+(f.total||0);},0);
-  var totalPendFact = FACTURAS.filter(function(f){return !f.pagada;}).reduce(function(a,f){return a+(f.total||0);},0);
-  var nFact = FACTURAS.length;
+  var totalFact  = FACT_R.reduce(function(a,f){ return a+(f.bruto||0); }, 0);
+  var totalCobrado= FACT_R.filter(function(f){return f.pagada;}).reduce(function(a,f){return a+(f.total||0);},0);
+  var totalPendFact = FACT_R.filter(function(f){return !f.pagada;}).reduce(function(a,f){return a+(f.total||0);},0);
+  var totalProy  = FACT_PROY.reduce(function(a,f){ return a+(f.bruto||0); }, 0);
+  var nFact = FACT_R.length;
 
   // Excluir obligaciones tributarias del cálculo de gastos operativos (no afectan P&L)
 
@@ -10294,10 +10362,11 @@ function renderResumenTablero() {
 
     + card('🧾','IVA generado',      ivaGen,     '#B45309','#FFFBEB',  'Cuatrimestre Ene–Abr', ivaGen===0?'Facturas sin IVA registrado':'')
 
-    + card('⏳','Facturas por cobrar',totalPendFact,'#A32D2D','#FFF1F2', FACTURAS.filter(function(f){return !f.pagada;}).length+' facturas pendientes','')
+    + card('⏳','Facturas por cobrar',totalPendFact,'#A32D2D','#FFF1F2', FACT_R.filter(function(f){return !f.pagada;}).length+' facturas pendientes','')
 
     + (function(){
-        var totalProg = 0, nProg = 0;
+        // Programado: meses futuros del Sheet + FP_DATA
+        var totalProg = totalProy, nProg = FACT_PROY.length;
         if(typeof FP_DATA!=='undefined') FP_DATA.forEach(function(fp){ totalProg+=(parseFloat(fp.monto)||0); nProg++; });
         return card('🗓️','Programado 2026', totalProg,'#553C9A','#F5F3FF', nProg+' facturas programadas','');
       })()
