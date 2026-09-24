@@ -9466,7 +9466,22 @@ function renderCarteraHome() {
     function sgEsEspecial(f){
       var tipo=(f.tipo||'').toUpperCase().trim();
       var cli=(f.cliente||'').toUpperCase();
-      return tipo.indexOf('CANJE')>=0||tipo.indexOf('CAMILO')>=0||cli.indexOf('CAMILO CONTRERAS')>=0||cli.indexOf('PHARMASER')>=0;
+      // Grupo especial: CANJE, PHARMASER (tipo o cliente), CAMILO CONTRERAS
+      return tipo.indexOf('CANJE')>=0||
+             tipo.indexOf('PHARMASER')>=0||
+             cli.indexOf('CAMILO CONTRERAS')>=0||
+             cli.indexOf('PHARMASER')>=0;
+    }
+    function sgEsOperacional(f){
+      var tipo=(f.tipo||'').toUpperCase().trim();
+      // Grupo operacional: Publicidad (incluyendo política pagada), GPS, Cámaras, Socio Pantalla
+      return tipo==='PUBLICIDAD'||
+             tipo==='GPS'||
+             tipo==='CAMARAS'||tipo==='CAMARA'||tipo==='CÁMARA'||
+             tipo.indexOf('PUBLICIDAD POLITICA')>=0||
+             tipo.indexOf('POLITICA PAG')>=0||
+             tipo.indexOf('SOCIO PANTALLA')>=0||
+             tipo.indexOf('PANTALLA')>=0;
     }
 
     // Extraer mes/año de una factura — acepta MAYÚSCULA, minúscula, con o sin año
@@ -9595,7 +9610,7 @@ function renderCarteraHome() {
     }
 
     var htmlCharts='';
-    htmlCharts+=sgDibujarChart(mmOper,'📺 Publicidad · GPS · Cámaras','#1A2B6B');
+    htmlCharts+=sgDibujarChart(mmOper,'📺 Publicidad · GPS · Cámaras · Política','#1A2B6B');
     htmlCharts+=sgDibujarChart(mmEspec,'🤝 Canje · Camilo · Pharmaser','#CC1818');
     htmlCharts+='<div style="display:flex;gap:14px;margin-top:6px;flex-wrap:wrap">'
       +'<span style="font-size:10px;display:flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:2px;background:#1D9E75;display:inline-block"></span>Pagado</span>'
@@ -9859,15 +9874,20 @@ function renderResumenTablero() {
   function sgGrupoFact(f) {
     var tipo   = (f.tipo||f['tipo']||'').toString().toUpperCase().trim();
     var cliente= (f.cliente||'').toUpperCase();
-    var num    = (f.num||'').toUpperCase();
-    // Grupo canje/especial
-    if (tipo === 'CANJE' || tipo.indexOf('CANJE') >= 0 ||
+    // Grupo especial: CANJE, PHARMASER (tipo o cliente), CAMILO CONTRERAS
+    if (tipo.indexOf('CANJE') >= 0 ||
+        tipo.indexOf('PHARMASER') >= 0 ||
         cliente.indexOf('CAMILO CONTRERAS') >= 0 ||
         cliente.indexOf('PHARMASER') >= 0)
       return 'especial';
-    // Grupo operacional
-    if (tipo === 'PUBLICIDAD' || tipo === 'GPS' || tipo === 'CAMARAS' ||
-        tipo === 'CÁMARA' || tipo === 'CAMARA')
+    // Grupo operacional: Publicidad (incluye política pagada), GPS, Cámaras, Socio Pantalla
+    if (tipo === 'PUBLICIDAD' ||
+        tipo === 'GPS' ||
+        tipo === 'CAMARAS' || tipo === 'CAMARA' || tipo === 'CÁMARA' ||
+        tipo.indexOf('PUBLICIDAD POLITICA') >= 0 ||
+        tipo.indexOf('POLITICA PAG') >= 0 ||
+        tipo.indexOf('SOCIO PANTALLA') >= 0 ||
+        tipo.indexOf('PANTALLA') >= 0)
       return 'operacional';
     return 'otro';
   }
@@ -10048,7 +10068,7 @@ function renderResumenTablero() {
           +'<div style="display:flex;gap:10px;flex-wrap:wrap">'
           // Card operacional
           +'<div style="flex:1;min-width:130px;background:#fff;border-radius:8px;padding:10px 12px;border-left:3px solid #1A2B6B">'
-          +'<div style="font-size:10px;font-weight:700;color:#1A2B6B;margin-bottom:4px">📺 PUBLICIDAD · GPS · CÁMARAS</div>'
+          +'<div style="font-size:10px;font-weight:700;color:#1A2B6B;margin-bottom:4px">📺 PUBLICIDAD · GPS · CÁMARAS · POLÍTICA</div>'
           +'<div style="font-size:15px;font-weight:700;color:#1A2B6B">'+F(totalOper)+'</div>'
           +'<div style="font-size:10px;color:#888;margin-top:2px">'+facOper.length+' facturas · '+Math.round(totalFact?totalOper/totalFact*100:0)+'% del total</div>'
           +'</div>'
@@ -10058,10 +10078,10 @@ function renderResumenTablero() {
           +'<div style="font-size:15px;font-weight:700;color:#CC1818">'+F(totalEspec)+'</div>'
           +'<div style="font-size:10px;color:#888;margin-top:2px">'+facEspec.length+' facturas · '+Math.round(totalFact?totalEspec/totalFact*100:0)+'% del total</div>'
           +'</div>'
-          // Card total sumado
+          // Card total = Operacional + Especial (cuadra con facturación)
           +'<div style="flex:1;min-width:130px;background:#fff;border-radius:8px;padding:10px 12px;border-left:3px solid #54504F">'
           +'<div style="font-size:10px;font-weight:700;color:#54504F;margin-bottom:4px">📊 INGRESO TOTAL</div>'
-          +'<div style="font-size:15px;font-weight:700;color:#54504F">'+F(ingResumen)+'</div>'
+          +'<div style="font-size:15px;font-weight:700;color:#54504F">'+F(totalOper+totalEspec)+'</div>'
           +'<div style="font-size:10px;color:#888;margin-top:2px">Cobrado: '+F(totalCobrado)+' ('+pctCob+'%)</div>'
           +'</div>'
           +'</div>'
