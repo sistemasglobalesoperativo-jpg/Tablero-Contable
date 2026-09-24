@@ -546,6 +546,7 @@ tbody tr:hover td{background:var(--cyan-light);}
   <!-- COLUMNA IZQUIERDA: Tablero financiero (scrollable) -->
   <div id="home-split-left" style="flex:1;min-width:0;overflow-y:auto;padding:16px 14px 16px 20px;">
     <div id="widget-resumen" style="margin-bottom:12px"></div>
+    <div id="widget-tabla-clientes" style="margin-bottom:12px"></div>
     <div id="home-bancos-panel-mini" style="display:none"></div>
 
 <div id="h-datos">
@@ -2463,6 +2464,7 @@ function alzakCargarDatosPrincipal(url, callback) {
       if (typeof renderFacturas         === 'function') setTimeout(renderFacturas, 50);
       if (typeof renderCarteraHome      === 'function') setTimeout(renderCarteraHome, 100);
       if (typeof renderResumenTablero   === 'function') setTimeout(renderResumenTablero, 150);
+      if (typeof renderTablaClientes    === 'function') setTimeout(renderTablaClientes, 170);
       if (typeof renderHomeGastos        === 'function') setTimeout(renderHomeGastos, 180);
       if (typeof fpRenderLista          === 'function') setTimeout(fpRenderLista, 200);
       if (typeof renderPresupuesto      === 'function') setTimeout(renderPresupuesto, 210);
@@ -4606,6 +4608,7 @@ function renderHome() {
   buildPills();
 
   renderResumenTablero();
+  if (typeof renderTablaClientes === 'function') setTimeout(renderTablaClientes, 200);
   if (typeof renderHomeBancosPanel === 'function') setTimeout(renderHomeBancosPanel, 100);
   // Mover pg-conc al panel derecho del split
   setTimeout(function() {
@@ -9857,6 +9860,191 @@ function confirmarBorrarPeriodo(bloque) {
 }
 
 // ============================================================
+
+// ============================================================
+// TABLA DE CLIENTES POR MES (desplegable en Resumen)
+// ============================================================
+function renderTablaClientes() {
+  var el = document.getElementById('widget-tabla-clientes');
+  if (!el || !window.FACTURAS || !FACTURAS.length) return;
+
+  var MESES = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
+  var MESES_CORTO = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+
+  function normMes(m) {
+    m = String(m||'').trim().toUpperCase();
+    for (var i=0; i<MESES.length; i++) if (m.indexOf(MESES[i].substring(0,3))===0) return MESES[i];
+    return m;
+  }
+  function clasificarTC(f) {
+    var tipo = String(f.tipo||'').toUpperCase().trim();
+    var cli  = String(f.cliente||'').toUpperCase().trim();
+    if (tipo.indexOf('CANJE')>=0 || cli.indexOf('CAMILO CONTRERAS')>=0) return 'CANJE';
+    if (tipo.indexOf('PHARMASER')>=0 || cli.indexOf('PHARMASER')>=0)    return 'PHARMASER';
+    if (tipo.indexOf('GPS')>=0)                                          return 'GPS';
+    if (tipo.indexOf('CAMARA')>=0 || tipo.indexOf('CÁMARA')>=0)         return 'CAMARAS';
+    if (tipo.indexOf('POLITICA')>=0)                                     return 'POLITICA';
+    if (tipo.indexOf('PUBLICIDAD')>=0)                                   return 'PUBLICIDAD';
+    return 'OTRO';
+  }
+
+  // Build pivot
+  var pivot = {}; // grupo > cli > mes > base
+  var recur = {}; // grupo > cli > count meses
+  var mesesActivos = {};
+
+  FACTURAS.forEach(function(f) {
+    var grupo = clasificarTC(f);
+    var cli   = String(f.cliente||'').trim();
+    var mes   = normMes(f.mes);
+    var base  = parseFloat(f.bruto||f.base||0);
+    if (!mes || base <= 0) return;
+    mesesActivos[mes] = true;
+    if (!pivot[grupo]) pivot[grupo] = {};
+    if (!pivot[grupo][cli]) pivot[grupo][cli] = {};
+    pivot[grupo][cli][mes] = (pivot[grupo][cli][mes]||0) + base;
+    if (!recur[grupo]) recur[grupo] = {};
+    if (!recur[grupo][cli]) recur[grupo][cli] = {};
+    recur[grupo][cli][mes] = true;
+  });
+
+  // Meses con datos, en orden
+  var mesesCols = MESES.filter(function(m){ return mesesActivos[m]; });
+
+  function F2(v) {
+    if (!v) return '<span style="color:#ccc">—</span>';
+    if (v >= 1e6) return '<span style="font-weight:600">$'+( v/1e6).toFixed(1)+'M</span>';
+    return '$'+(v/1e3).toFixed(0)+'K';
+  }
+  function totalGrupo(grupo) {
+    var t=0;
+    Object.values(pivot[grupo]||{}).forEach(function(mobj){ Object.values(mobj).forEach(function(v){t+=v;}); });
+    return t;
+  }
+  function sortClientes(grupo) {
+    var clis = Object.keys(pivot[grupo]||{});
+    return clis.sort(function(a,b){
+      var ma = Object.keys(recur[grupo][a]||{}).length;
+      var mb = Object.keys(recur[grupo][b]||{}).length;
+      if (mb !== ma) return mb - ma;
+      var ta = Object.values(pivot[grupo][a]).reduce(function(s,v){return s+v;},0);
+      var tb = Object.values(pivot[grupo][b]).reduce(function(s,v){return s+v;},0);
+      return tb - ta;
+    });
+  }
+
+  var GRUPOS = [
+    { id:'PUBLICIDAD', label:'📺 Publicidad en Pantallas', color:'#1A2B6B', bg:'#EBF3FB' },
+    { id:'GPS',        label:'📡 GPS y Rastreo',           color:'#0F6E56', bg:'#EDFAF5' },
+    { id:'PHARMASER',  label:'💊 Pharmaser',               color:'#7B3FA0', bg:'#F5EDFB' },
+    { id:'POLITICA',   label:'🗳️ Publicidad Política Pagada', color:'#B06A10', bg:'#FEF6EC' },
+    { id:'CAMARAS',    label:'📷 Cámaras y Tecnología',   color:'#1A6B5A', bg:'#EDFBF7' },
+    { id:'CANJE',      label:'🤝 Canje / Intragrupo',      color:'#888',    bg:'#F5F5F5' }
+  ];
+
+  // Header columnas
+  var thMeses = mesesCols.map(function(m,i){
+    return '<th style="padding:5px 8px;text-align:right;font-size:10px;color:#888;font-weight:700;white-space:nowrap">'+MESES_CORTO[MESES.indexOf(m)]+'</th>';
+  }).join('');
+
+  var html = '<div style="background:#fff;border-radius:12px;border:1px solid #e0ddd8;overflow:hidden;margin-bottom:4px">';
+  // Header desplegable
+  html += '<div onclick="(function(){var b=document.getElementById(\'tc-body\');var ic=document.getElementById(\'tc-ic\');if(b.style.display===\'none\'){b.style.display=\'\';ic.textContent=\'▲\';}else{b.style.display=\'none\';ic.textContent=\'▼\';}})()" style="display:flex;align-items:center;justify-content:space-between;padding:13px 18px;cursor:pointer;user-select:none;background:#F8F7F5">';
+  html += '<div style="font-size:13px;font-weight:700;color:#54504F">📋 Facturación por Cliente y Mes · Base Gravable</div>';
+  html += '<div style="display:flex;align-items:center;gap:12px">';
+  html += '<div style="font-size:11px;color:#888">'+mesesCols.length+' meses activos · '+FACTURAS.length+' registros</div>';
+  html += '<div id="tc-ic" style="font-size:12px;color:#CC1818;font-weight:700">▼</div>';
+  html += '</div></div>';
+
+  // Body (colapsado por defecto)
+  html += '<div id="tc-body" style="display:none;overflow-x:auto">';
+  html += '<table style="width:100%;border-collapse:collapse;font-size:11px">';
+
+  GRUPOS.forEach(function(g) {
+    if (!pivot[g.id] || !Object.keys(pivot[g.id]).length) return;
+    var clis = sortClientes(g.id);
+    var tGrupo = totalGrupo(g.id);
+    var nRec = clis.filter(function(c){ return Object.keys(recur[g.id][c]).length >= 3; }).length;
+
+    // Grupo header row
+    html += '<tr style="background:'+g.bg+'">';
+    html += '<td colspan="'+(mesesCols.length+3)+'" style="padding:8px 14px;font-weight:700;color:'+g.color+';font-size:11px;border-top:2px solid '+g.color+'20">';
+    html += g.label + ' &nbsp;<span style="font-weight:400;color:#888;font-size:10px">'+clis.length+' clientes · '+nRec+' recurrentes · $'+(tGrupo/1e6).toFixed(1)+'M base gravable</span>';
+    html += '</td></tr>';
+
+    // Subheader columnas para este grupo
+    html += '<tr style="background:#fafafa">';
+    html += '<th style="padding:5px 14px;text-align:left;font-size:10px;color:#aaa;font-weight:700;min-width:180px">Cliente</th>';
+    html += '<th style="padding:5px 8px;text-align:center;font-size:10px;color:#aaa;font-weight:700">Meses</th>';
+    html += thMeses;
+    html += '<th style="padding:5px 10px;text-align:right;font-size:10px;color:#aaa;font-weight:700">Total</th>';
+    html += '</tr>';
+
+    // Separar recurrentes (3+) de puntuales
+    var recurrentes = clis.filter(function(c){ return Object.keys(recur[g.id][c]).length >= 3; });
+    var puntuales   = clis.filter(function(c){ return Object.keys(recur[g.id][c]).length < 3; });
+
+    function renderRows(lista, bgRow) {
+      lista.forEach(function(cli, idx) {
+        var nMeses = Object.keys(recur[g.id][cli]).length;
+        var totalCli = Object.values(pivot[g.id][cli]).reduce(function(s,v){return s+v;},0);
+        var rowBg = idx%2===0 ? bgRow : '#fff';
+        html += '<tr style="background:'+rowBg+';border-bottom:1px solid #f0eeec" onmouseover="this.style.background=\'#FFFBF0\'" onmouseout="this.style.background=\''+rowBg+'\'">';
+        // Nombre cliente
+        html += '<td style="padding:5px 14px;white-space:nowrap;max-width:220px;overflow:hidden;text-overflow:ellipsis" title="'+cli+'">'+cli+'</td>';
+        // Badge meses
+        var badgeColor = nMeses>=6?'#CC1818':nMeses>=3?'#0F6E56':'#888';
+        html += '<td style="padding:5px 8px;text-align:center"><span style="background:'+badgeColor+'20;color:'+badgeColor+';padding:1px 6px;border-radius:10px;font-size:9px;font-weight:700">'+nMeses+'m</span></td>';
+        // Valores por mes
+        mesesCols.forEach(function(mes){
+          var v = pivot[g.id][cli][mes]||0;
+          html += '<td style="padding:5px 8px;text-align:right;white-space:nowrap">'+F2(v)+'</td>';
+        });
+        // Total
+        html += '<td style="padding:5px 10px;text-align:right;font-weight:700;color:'+g.color+';white-space:nowrap">$'+(totalCli/1e6).toFixed(2)+'M</td>';
+        html += '</tr>';
+      });
+    }
+
+    if (recurrentes.length) {
+      html += '<tr><td colspan="'+(mesesCols.length+3)+'" style="padding:3px 14px;font-size:9px;font-weight:700;color:#0F6E56;background:#f0faf7;letter-spacing:.05em">⭐ RECURRENTES (3+ meses)</td></tr>';
+      renderRows(recurrentes, '#f7fdfa');
+    }
+    if (puntuales.length) {
+      html += '<tr><td colspan="'+(mesesCols.length+3)+'" style="padding:3px 14px;font-size:9px;font-weight:700;color:#888;background:#fafafa;letter-spacing:.05em">PUNTUALES</td></tr>';
+      renderRows(puntuales, '#fafafa');
+    }
+
+    // Subtotal fila
+    html += '<tr style="background:'+g.bg+';border-top:1px solid '+g.color+'30">';
+    html += '<td style="padding:6px 14px;font-weight:700;color:'+g.color+'">SUBTOTAL '+g.id+'</td>';
+    html += '<td></td>';
+    mesesCols.forEach(function(mes){
+      var vMes=0;
+      clis.forEach(function(c){ vMes+=(pivot[g.id][c][mes]||0); });
+      html += '<td style="padding:6px 8px;text-align:right;font-weight:700;color:'+g.color+';white-space:nowrap">'+F2(vMes)+'</td>';
+    });
+    html += '<td style="padding:6px 10px;text-align:right;font-weight:700;color:'+g.color+'">'+'$'+(tGrupo/1e6).toFixed(2)+'M</td>';
+    html += '</tr>';
+  });
+
+  // Total general
+  var totalGeneral = 0;
+  GRUPOS.forEach(function(g){ totalGeneral += totalGrupo(g.id); });
+  html += '<tr style="background:#1A2B6B;color:#fff">';
+  html += '<td style="padding:8px 14px;font-weight:700;font-size:12px">TOTAL GENERAL</td>';
+  html += '<td></td>';
+  mesesCols.forEach(function(mes){
+    var vMes=0;
+    GRUPOS.forEach(function(g){ Object.values(pivot[g.id]||{}).forEach(function(mobj){ vMes+=(mobj[mes]||0); }); });
+    html += '<td style="padding:8px 8px;text-align:right;font-weight:700;font-size:11px;white-space:nowrap;color:#fff">$'+(vMes/1e6).toFixed(1)+'M</td>';
+  });
+  html += '<td style="padding:8px 10px;text-align:right;font-weight:700;font-size:12px;color:#FFD700">'+'$'+(totalGeneral/1e6).toFixed(1)+'M</td>';
+  html += '</tr>';
+
+  html += '</table></div></div>';
+  el.innerHTML = html;
+}
 
 // RESUMEN DEL TABLERO
 
