@@ -547,6 +547,17 @@ tbody tr:hover td{background:var(--cyan-light);}
   <div id="home-split-left" style="flex:1;min-width:0;overflow-y:auto;padding:16px 14px 16px 20px;">
     <div id="widget-resumen" style="margin-bottom:12px"></div>
     <div id="widget-tabla-clientes" style="margin-bottom:12px"></div>
+    <!-- Modal drill-down KPI -->
+    <div id="rs-drilldown" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.45);z-index:9999;align-items:center;justify-content:center" onclick="if(event.target===this)this.style.display='none'">
+      <div style="background:#fff;border-radius:14px;width:min(720px,96vw);max-height:80vh;display:flex;flex-direction:column;box-shadow:0 8px 40px rgba(0,0,0,.18)">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #f0eeec">
+          <div id="rs-dd-title" style="font-size:14px;font-weight:700;color:#54504F"></div>
+          <button onclick="document.getElementById('rs-drilldown').style.display='none'" style="background:none;border:none;font-size:18px;cursor:pointer;color:#888;padding:2px 6px">✕</button>
+        </div>
+        <div id="rs-dd-body" style="overflow-y:auto;padding:14px 20px;flex:1"></div>
+        <div id="rs-dd-footer" style="padding:10px 20px;border-top:1px solid #f0eeec;font-size:11px;color:#888;background:#fafafa;border-radius:0 0 14px 14px"></div>
+      </div>
+    </div>
     <div id="home-bancos-panel-mini" style="display:none"></div>
 
 <div id="h-datos">
@@ -2298,15 +2309,25 @@ function alzakCargarDatosPrincipal(url, callback) {
             var venceDias    = _vClean;   // yyyy-MM-dd para diasHasta()
             var venceDisplay = _vClean ? _vClean.split('-').reverse().join('/') : ''; // dd/MM/yyyy
             var fechaDisplay = alzakFechaDisplay(r['Fecha']||'');
-            var pagada = (r['Estado']||'').toLowerCase().indexOf('pagad') >= 0 ||
-                         (r['Estado']||'').toLowerCase() === 'cobrada';
-            var estadoRaw = (r['Estado']||'pendiente').trim();
+            var tipoRaw  = (r['tipo']||r['Tipo']||r['TIPO']||'').trim();
+            var estadoRaw = (r['Estado']||r['estado']||'pendiente').trim();
+            var esCanje = estadoRaw.toUpperCase() === 'CANJE' ||
+                          tipoRaw.toUpperCase().indexOf('CANJE') >= 0 ||
+                          tipoRaw.toUpperCase().indexOf('CAMILO') >= 0 ||
+                          (r['banco']||'').toUpperCase() === 'CANJE' ||
+                          (r['banco']||'').toUpperCase() === 'SEÑOR CAMILO';
+            // Si es canje → siempre pagada (es un intercambio, no hay deuda)
+            var pagada = esCanje ||
+                         estadoRaw.toLowerCase().indexOf('pagad') >= 0 ||
+                         estadoRaw.toLowerCase() === 'cobrada';
+            // Estado normalizado: canje muestra como CANJE, no como pendiente
+            var estadoNorm = esCanje ? 'CANJE' : estadoRaw;
             return {
               id:          'GS-' + idx,
               num:         r['factura']||r['N_Factura']||r['N Factura']||r['Factura']||r['N°']||r['num']||'',
               banco:       r['banco']||r['Banco']||r['BANCO']||'',
-              tipo:        r['tipo']||r['Tipo']||r['TIPO']||'',
-              estado:      estadoRaw,
+              tipo:        tipoRaw,
+              estado:      estadoNorm,
               concepto:    r['Concepto']||'',
               fecha:       fechaDisplay || alzakFechaAISO(r['Fecha']||''),
               fecha_raw:   r['Fecha']||'',
@@ -2322,7 +2343,7 @@ function alzakCargarDatosPrincipal(url, callback) {
               retefuente:  rete,
               reteiva:     Math.round(iva * 0.15),
               total:       total,
-              pagada:      estadoRaw.toLowerCase().indexOf('pagad') >= 0
+              pagada:      pagada
             };
           });
           if (typeof renderFacturas === 'function') renderFacturas();
@@ -6552,6 +6573,14 @@ function cerrarDetalle() {
 
 function estadoFact(f) {
 
+  // Canje → estado especial (no es deuda, es intercambio)
+  if ((f.estado||'').toUpperCase() === 'CANJE' ||
+      (f.tipo||'').toUpperCase().indexOf('CANJE') >= 0 ||
+      (f.tipo||'').toUpperCase().indexOf('CAMILO') >= 0 ||
+      (f.banco||'').toUpperCase() === 'CANJE' ||
+      (f.banco||'').toUpperCase() === 'SEÑOR CAMILO')
+    return 'CANJE';
+
   if (f.pagada) return 'pagada';
 
   var dias = diasHasta(f.vence);
@@ -6565,6 +6594,9 @@ function estadoFact(f) {
 }
 
 function badgeFact(est) {
+
+  if (est === 'CANJE' || (est||'').toUpperCase() === 'CANJE')
+                         return '<span class="badge" style="background:#EDE9FE;color:#7C3AED;border:1px solid #C4B5FD">🤝 Canje</span>';
 
   if (est === 'pagada')    return '<span class="badge bg">✓ Pagada</span>';
 
@@ -9574,9 +9606,10 @@ function renderCarteraHome() {
     function sgEsEspecial(f){
       var tipo=(f.tipo||'').toUpperCase().trim();
       var cli=(f.cliente||'').toUpperCase();
-      // Grupo especial: CANJE, PHARMASER (tipo o cliente), CAMILO CONTRERAS
+      // Grupo especial: CANJE, PHARMASER (tipo o cliente), CAMILO CONTRERAS (tipo o cliente)
       return tipo.indexOf('CANJE')>=0||
              tipo.indexOf('PHARMASER')>=0||
+             tipo.indexOf('CAMILO')>=0||
              cli.indexOf('CAMILO CONTRERAS')>=0||
              cli.indexOf('PHARMASER')>=0;
     }
@@ -9967,6 +10000,63 @@ function confirmarBorrarPeriodo(bloque) {
 // ============================================================
 
 // ============================================================
+// DRILL-DOWN KPI RESUMEN — muestra lista de facturas al hacer clic
+// ============================================================
+function rsDrilldown(titulo, facturas, totalLabel) {
+  var modal = document.getElementById('rs-drilldown');
+  var title = document.getElementById('rs-dd-title');
+  var body  = document.getElementById('rs-dd-body');
+  var foot  = document.getElementById('rs-dd-footer');
+  if (!modal) return;
+
+  title.textContent = titulo;
+
+  // Ordenar por base desc
+  var lista = facturas.slice().sort(function(a,b){ return (b.bruto||0)-(a.bruto||0); });
+
+  var totalBase  = lista.reduce(function(s,f){return s+(f.bruto||0);},0);
+  var totalTotal = lista.reduce(function(s,f){return s+(f.total||0);},0);
+
+  var MN = ['','Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+
+  var rows = lista.map(function(f) {
+    var est = f.estado || (f.pagada ? 'pagada' : 'pendiente');
+    var estUp = est.toUpperCase();
+    var badgeStyle, badgeTxt;
+    if (estUp === 'CANJE')        { badgeStyle='background:#EDE9FE;color:#7C3AED'; badgeTxt='🤝 Canje'; }
+    else if (f.pagada)            { badgeStyle='background:#D1FAE5;color:#065F46'; badgeTxt='✓ Pagada'; }
+    else if (estUp === 'VENCIDA') { badgeStyle='background:#FEE2E2;color:#991B1B'; badgeTxt='⚠ Vencida'; }
+    else                          { badgeStyle='background:#FEF3C7;color:#92400E'; badgeTxt='● Pendiente'; }
+
+    var mes = String(f.mes||f['Mes']||'').trim();
+    return '<tr style="border-bottom:1px solid #f5f3f0">'
+      +'<td style="padding:7px 8px;font-size:11px;font-weight:700;color:#CC1818;white-space:nowrap">'+(f.num||'—')+'</td>'
+      +'<td style="padding:7px 8px;font-size:11px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+f.cliente+'">'+f.cliente+'</td>'
+      +'<td style="padding:7px 8px;font-size:10px;color:#888;white-space:nowrap">'+mes+'</td>'
+      +'<td style="padding:7px 8px;text-align:right;font-size:11px;white-space:nowrap">'+F(f.bruto||0)+'</td>'
+      +'<td style="padding:7px 8px;text-align:right;font-size:11px;font-weight:700;color:#CC1818;white-space:nowrap">'+F(f.total||0)+'</td>'
+      +'<td style="padding:7px 8px;text-align:center"><span style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:10px;'+badgeStyle+'">'+badgeTxt+'</span></td>'
+      +'</tr>';
+  }).join('');
+
+  body.innerHTML = '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">'
+    +'<thead><tr style="background:#f5f3f0">'
+    +'<th style="padding:6px 8px;text-align:left;font-size:10px;color:#888;font-weight:700">Factura</th>'
+    +'<th style="padding:6px 8px;text-align:left;font-size:10px;color:#888;font-weight:700">Cliente</th>'
+    +'<th style="padding:6px 8px;text-align:left;font-size:10px;color:#888;font-weight:700">Mes</th>'
+    +'<th style="padding:6px 8px;text-align:right;font-size:10px;color:#888;font-weight:700">Base gravable</th>'
+    +'<th style="padding:6px 8px;text-align:right;font-size:10px;color:#888;font-weight:700">Total c/IVA</th>'
+    +'<th style="padding:6px 8px;text-align:center;font-size:10px;color:#888;font-weight:700">Estado</th>'
+    +'</tr></thead>'
+    +'<tbody>'+rows+'</tbody>'
+    +'</table></div>';
+
+  foot.innerHTML = lista.length+' registros &nbsp;·&nbsp; Base gravable: <strong>'+F(totalBase)+'</strong> &nbsp;·&nbsp; Total c/IVA: <strong>'+F(totalTotal)+'</strong>';
+
+  modal.style.display = 'flex';
+}
+
+// ============================================================
 // TABLA DE CLIENTES POR MES (desplegable en Resumen)
 // ============================================================
 function renderTablaClientes() {
@@ -10167,9 +10257,10 @@ function renderResumenTablero() {
   function sgGrupoFact(f) {
     var tipo   = (f.tipo||f['tipo']||'').toString().toUpperCase().trim();
     var cliente= (f.cliente||'').toUpperCase();
-    // Grupo especial: CANJE, PHARMASER (tipo o cliente), CAMILO CONTRERAS
+    // Grupo especial: CANJE, PHARMASER (tipo o cliente), CAMILO CONTRERAS (tipo o cliente)
     if (tipo.indexOf('CANJE') >= 0 ||
         tipo.indexOf('PHARMASER') >= 0 ||
+        tipo.indexOf('CAMILO') >= 0 ||
         cliente.indexOf('CAMILO CONTRERAS') >= 0 ||
         cliente.indexOf('PHARMASER') >= 0)
       return 'especial';
@@ -10182,6 +10273,8 @@ function renderResumenTablero() {
         tipo.indexOf('SOCIO PANTALLA') >= 0 ||
         tipo.indexOf('PANTALLA') >= 0)
       return 'operacional';
+    // Si no cae en ningún grupo definido → operacional por defecto
+    // (evita que facturas reales queden excluidas del total)
     return 'otro';
   }
 
@@ -10193,6 +10286,11 @@ function renderResumenTablero() {
   var facOper    = FACT_R.filter(function(f){ return sgGrupoFact(f)==='operacional'; });
   var facEspec   = FACT_R.filter(function(f){ return sgGrupoFact(f)==='especial'; });
   var facOtro    = FACT_R.filter(function(f){ return sgGrupoFact(f)==='otro'; });
+
+  // Exponer globalmente para onclick del drill-down
+  window._RS_FACOPER = facOper;
+  window._RS_FACESP  = facEspec;
+  window._RS_FACTALL = FACT_R;
 
   var totalOper  = facOper.reduce(function(a,f){ return a+(f.bruto||0); }, 0);
   var totalEspec = facEspec.reduce(function(a,f){ return a+(f.bruto||0); }, 0);
@@ -10313,20 +10411,18 @@ function renderResumenTablero() {
 
   // ── Helper tarjeta ────────────────────────────────────────
 
-  function card(ico, label, valor, col, bg, sub1, sub2, negativo) {
+  function card(ico, label, valor, col, bg, sub1, sub2, negativo, onclick) {
 
     var valorStr = (negativo && valor < 0 ? '-' : '') + F(Math.abs(valor));
+    var baseStyle = 'background:'+bg+';border-radius:11px;padding:15px 18px;flex:1;min-width:160px;border:1px solid rgba(0,0,0,.05);';
+    var clickExtra = onclick ? 'cursor:pointer' : '';
+    var evts = onclick ? ' onclick="'+onclick+'" onmouseover="this.style.boxShadow=\'0 2px 10px rgba(0,0,0,.1)\'" onmouseout="this.style.boxShadow=\'none\'"' : '';
 
-    return '<div style="background:'+bg+';border-radius:11px;padding:15px 18px;flex:1;min-width:160px;border:1px solid rgba(0,0,0,.05)">'
-
-      +'<div style="font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">'+ico+' '+label+'</div>'
-
+    return '<div style="'+baseStyle+clickExtra+'"'+evts+'>'
+      +'<div style="font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">'+ico+' '+label+(onclick?' <span style="font-size:9px;opacity:.4">›</span>':'')+'</div>'
       +'<div style="font-size:15px;font-weight:700;color:'+col+'">'+valorStr+'</div>'
-
       +(sub1?'<div style="font-size:11px;color:'+col+';opacity:.6;margin-top:4px">'+sub1+'</div>':'')
-
       +(sub2?'<div style="font-size:10px;color:'+col+';opacity:.45;margin-top:1px">'+sub2+'</div>':'')
-
       +'</div>';
 
   }
@@ -10370,30 +10466,30 @@ function renderResumenTablero() {
         return '<div style="background:#EBF3FB;border-radius:11px;padding:15px 18px;flex:2;min-width:340px;border:1px solid rgba(204,24,24,.12)">'
           +'<div style="font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">📄 Facturación Total · '+nFact+' facturas reales · Base Gravable</div>'
           +'<div style="display:flex;gap:10px;flex-wrap:wrap">'
-          // Card operacional
-          +'<div style="flex:1;min-width:130px;background:#fff;border-radius:8px;padding:10px 12px;border-left:3px solid #1A2B6B">'
+          // Card operacional — clickeable
+          +'<div onclick="rsDrilldown(\'📺 Publicidad · GPS · Cámaras · Política\',window._RS_FACOPER||[],\'Base gravable\')" style="flex:1;min-width:130px;background:#fff;border-radius:8px;padding:10px 12px;border-left:3px solid #1A2B6B;cursor:pointer" onmouseover="this.style.boxShadow=\'0 2px 10px rgba(26,43,107,.15)\'" onmouseout="this.style.boxShadow=\'none\'">'
           +'<div style="font-size:10px;font-weight:700;color:#1A2B6B;margin-bottom:4px">📺 PUBLICIDAD · GPS · CÁMARAS · POLÍTICA</div>'
           +'<div style="font-size:15px;font-weight:700;color:#1A2B6B">'+F(totalOper)+'</div>'
-          +'<div style="font-size:10px;color:#888;margin-top:2px">'+facOper.length+' facturas · '+Math.round(totalFact?totalOper/totalFact*100:0)+'% del total</div>'
+          +'<div style="font-size:10px;color:#888;margin-top:2px">'+facOper.length+' facturas · '+Math.round(totalFact?totalOper/totalFact*100:0)+'% del total · <span style="color:#1A2B6B">ver detalle ›</span></div>'
           +'</div>'
-          // Card canje/especial
-          +'<div style="flex:1;min-width:130px;background:#fff;border-radius:8px;padding:10px 12px;border-left:3px solid #CC1818">'
+          // Card canje/especial — clickeable
+          +'<div onclick="rsDrilldown(\'🤝 Canje · Camilo · Pharmaser\',window._RS_FACESP||[],\'Base gravable\')" style="flex:1;min-width:130px;background:#fff;border-radius:8px;padding:10px 12px;border-left:3px solid #CC1818;cursor:pointer" onmouseover="this.style.boxShadow=\'0 2px 10px rgba(204,24,24,.15)\'" onmouseout="this.style.boxShadow=\'none\'">'
           +'<div style="font-size:10px;font-weight:700;color:#CC1818;margin-bottom:4px">🤝 CANJE · CAMILO · PHARMASER</div>'
           +'<div style="font-size:15px;font-weight:700;color:#CC1818">'+F(totalEspec)+'</div>'
-          +'<div style="font-size:10px;color:#888;margin-top:2px">'+facEspec.length+' facturas · '+Math.round(totalFact?totalEspec/totalFact*100:0)+'% del total</div>'
+          +'<div style="font-size:10px;color:#888;margin-top:2px">'+facEspec.length+' facturas · '+Math.round(totalFact?totalEspec/totalFact*100:0)+'% del total · <span style="color:#CC1818">ver detalle ›</span></div>'
           +'</div>'
-          // Card total
-          +'<div style="flex:1;min-width:130px;background:#fff;border-radius:8px;padding:10px 12px;border-left:3px solid #54504F">'
+          // Card total — clickeable
+          +'<div onclick="rsDrilldown(\'📊 Ingreso Total · Todas las facturas\',window._RS_FACTALL||[],\'Base gravable\')" style="flex:1;min-width:130px;background:#fff;border-radius:8px;padding:10px 12px;border-left:3px solid #54504F;cursor:pointer" onmouseover="this.style.boxShadow=\'0 2px 10px rgba(84,80,79,.15)\'" onmouseout="this.style.boxShadow=\'none\'">'
           +'<div style="font-size:10px;font-weight:700;color:#54504F;margin-bottom:4px">📊 INGRESO TOTAL</div>'
-          +'<div style="font-size:15px;font-weight:700;color:#54504F">'+F(totalOper+totalEspec)+'</div>'
-          +'<div style="font-size:10px;color:#888;margin-top:2px">Cobrado: '+F(totalCobrado)+' ('+pctCob+'%)</div>'
+          +'<div style="font-size:15px;font-weight:700;color:#54504F">'+F(totalOper+totalEspec+totalOtro)+'</div>'
+          +'<div style="font-size:10px;color:#888;margin-top:2px">Cobrado: '+F(totalCobrado)+' ('+pctCob+'%) · <span style="color:#54504F">ver detalle ›</span></div>'
           +'</div>'
           +'</div>'
-          // Fila de desglose tipo de ingreso
+          // Chips desglose por tipo — también clickeables
           +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px solid #e8e5e0">'
-          +'<div style="font-size:10px;color:#54504F;padding:3px 8px;background:#f0eeec;border-radius:6px">🧾 FESG: <strong>'+F(brFESG)+'</strong></div>'
-          +'<div style="font-size:10px;color:#0F6E56;padding:3px 8px;background:#EDFAF5;border-radius:6px">🏦 Sin fact.·banco: <strong>'+F(brBco)+'</strong></div>'
-          +'<div style="font-size:10px;color:#CC1818;padding:3px 8px;background:#FEF2F2;border-radius:6px">💵 Efectivo: <strong>'+F(brEfec)+'</strong></div>'
+          +'<div onclick="rsDrilldown(\'🧾 Facturas electrónicas FESG\',FACT_R.filter(function(f){return String(f.num||\'\').toUpperCase().indexOf(\'FESG\')===0;}),\'Base gravable\')" style="font-size:10px;color:#54504F;padding:3px 8px;background:#f0eeec;border-radius:6px;cursor:pointer">🧾 FESG: <strong>'+F(brFESG)+'</strong> ›</div>'
+          +'<div onclick="rsDrilldown(\'🏦 Sin factura · ingresó a banco\',(function(){var B={\'BANCOLOMBIA\':1,\'SUDAMERIS\':1,\'DAVIVIENDA\':1,\'BOLD\':1,\'BANCOLOMBIA / EFECTIVO\':1,\'SUDAMERIS / EFECTIVO\':1};return FACT_R.filter(function(f){var n=String(f.num||\'\').toUpperCase();var b=String(f.banco||\'\').toUpperCase();return(n===\'\'||n===\'NAN\'||n===\'EFECTIVO\')&&B[b];});})()" style="font-size:10px;color:#0F6E56;padding:3px 8px;background:#EDFAF5;border-radius:6px;cursor:pointer">🏦 Sin fact.·banco: <strong>'+F(brBco)+'</strong> ›</div>'
+          +'<div onclick="rsDrilldown(\'💵 Efectivo puro\',(function(){var B={\'BANCOLOMBIA\':1,\'SUDAMERIS\':1,\'DAVIVIENDA\':1,\'BOLD\':1,\'BANCOLOMBIA / EFECTIVO\':1,\'SUDAMERIS / EFECTIVO\':1};return FACT_R.filter(function(f){var n=String(f.num||\'\').toUpperCase();var b=String(f.banco||\'\').toUpperCase();return(n===\'\'||n===\'NAN\'||n===\'EFECTIVO\')&&!B[b];});})()" style="font-size:10px;color:#CC1818;padding:3px 8px;background:#FEF2F2;border-radius:6px;cursor:pointer">💵 Efectivo: <strong>'+F(brEfec)+'</strong> ›</div>'
           +'<div style="font-size:10px;color:#1A2B6B;padding:3px 8px;background:#EBF3FB;border-radius:6px;font-weight:700">= '+F(brFESG+brBco+brEfec)+'</div>'
           +'</div>'
           +'</div>';
@@ -10415,15 +10511,15 @@ function renderResumenTablero() {
 
     +'<div style="display:flex;gap:8px;flex-wrap:wrap">'
 
-    + card('🧾','IVA generado',      ivaGen,     '#B45309','#FFFBEB',  'Cuatrimestre Ene–Abr', ivaGen===0?'Facturas sin IVA registrado':'')
+    + card('🧾','IVA generado',      ivaGen,     '#B45309','#FFFBEB',  (function(){ var MN=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']; return 'Acumulado Ene–'+MN[SG_MES_ACTUAL-1]; })(), ivaGen===0?'Facturas sin IVA registrado':'','','rsDrilldown(\'🧾 IVA Generado · Todas las facturas reales\',FACT_R,\'Base gravable\')')
 
-    + card('⏳','Facturas por cobrar',totalPendFact,'#A32D2D','#FFF1F2', FACT_R.filter(function(f){return !f.pagada;}).length+' facturas pendientes','')
+    + card('⏳','Facturas por cobrar',totalPendFact,'#A32D2D','#FFF1F2', FACT_R.filter(function(f){return !f.pagada;}).length+' facturas pendientes','','','rsDrilldown(\'⏳ Facturas por cobrar\',FACT_R.filter(function(f){return !f.pagada;}),\'Base gravable\')')
 
     + (function(){
         // Programado: meses futuros del Sheet + FP_DATA
         var totalProg = totalProy, nProg = FACT_PROY.length;
         if(typeof FP_DATA!=='undefined') FP_DATA.forEach(function(fp){ totalProg+=(parseFloat(fp.monto)||0); nProg++; });
-        return card('🗓️','Programado 2026', totalProg,'#553C9A','#F5F3FF', nProg+' facturas programadas','');
+        return card('🗓️','Programado 2026', totalProg,'#553C9A','#F5F3FF', nProg+' facturas programadas','','','rsDrilldown(\'🗓️ Programado 2026\',FACT_PROY,\'Base gravable\')');
       })()
 
     + (function(){
