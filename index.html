@@ -2303,13 +2303,15 @@ function alzakCargarDatosPrincipal(url, callback) {
             var estadoRaw = (r['Estado']||'pendiente').trim();
             return {
               id:          'GS-' + idx,
-              num:         r['N_Factura']||r['N Factura']||r['Factura']||r['N°']||'',
+              num:         r['factura']||r['N_Factura']||r['N Factura']||r['Factura']||r['N°']||r['num']||'',
+              banco:       r['banco']||r['Banco']||r['BANCO']||'',
               tipo:        r['tipo']||r['Tipo']||r['TIPO']||'',
               estado:      estadoRaw,
               concepto:    r['Concepto']||'',
               fecha:       fechaDisplay || alzakFechaAISO(r['Fecha']||''),
               fecha_raw:   r['Fecha']||'',
               'Mes':       r['Mes']||r['mes']||r['MES']||r['mes ']||'',
+              mes:         r['mes']||r['Mes']||r['MES']||r['mes ']||'',
               vence:       venceDias,
               venceDisplay:venceDisplay,
               cliente:     (r['Cliente']||'').trim(),
@@ -10357,11 +10359,16 @@ function renderResumenTablero() {
 
     +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">'
 
-    // SG: Tres cards de facturación diferenciados
+    // SG: Cards de facturación con grupos y desglose de tipo de ingreso
     + (function(){
         var pctCob = totalFact ? Math.round(totalCobrado/totalFact*100) : 0;
+        // Desglose por tipo de ingreso (solo reales)
+        var _BRC = {'BANCOLOMBIA':1,'SUDAMERIS':1,'DAVIVIENDA':1,'BOLD':1,'BANCOLOMBIA / EFECTIVO':1,'SUDAMERIS / EFECTIVO':1};
+        var brFESG = FACT_R.filter(function(f){ return String(f.num||'').toUpperCase().indexOf('FESG')===0; }).reduce(function(a,f){return a+(f.bruto||0);},0);
+        var brBco  = FACT_R.filter(function(f){ var n=String(f.num||'').toUpperCase(); var b=String(f.banco||'').toUpperCase(); return (n===''||n==='NAN'||n==='EFECTIVO')&&_BRC[b]; }).reduce(function(a,f){return a+(f.bruto||0);},0);
+        var brEfec = FACT_R.filter(function(f){ var n=String(f.num||'').toUpperCase(); var b=String(f.banco||'').toUpperCase(); return (n===''||n==='NAN'||n==='EFECTIVO')&&!_BRC[b]; }).reduce(function(a,f){return a+(f.bruto||0);},0);
         return '<div style="background:#EBF3FB;border-radius:11px;padding:15px 18px;flex:2;min-width:340px;border:1px solid rgba(204,24,24,.12)">'
-          +'<div style="font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">📄 Facturación Total · '+nFact+' facturas</div>'
+          +'<div style="font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">📄 Facturación Total · '+nFact+' facturas reales · Base Gravable</div>'
           +'<div style="display:flex;gap:10px;flex-wrap:wrap">'
           // Card operacional
           +'<div style="flex:1;min-width:130px;background:#fff;border-radius:8px;padding:10px 12px;border-left:3px solid #1A2B6B">'
@@ -10375,12 +10382,19 @@ function renderResumenTablero() {
           +'<div style="font-size:15px;font-weight:700;color:#CC1818">'+F(totalEspec)+'</div>'
           +'<div style="font-size:10px;color:#888;margin-top:2px">'+facEspec.length+' facturas · '+Math.round(totalFact?totalEspec/totalFact*100:0)+'% del total</div>'
           +'</div>'
-          // Card total = Operacional + Especial (cuadra con facturación)
+          // Card total
           +'<div style="flex:1;min-width:130px;background:#fff;border-radius:8px;padding:10px 12px;border-left:3px solid #54504F">'
           +'<div style="font-size:10px;font-weight:700;color:#54504F;margin-bottom:4px">📊 INGRESO TOTAL</div>'
           +'<div style="font-size:15px;font-weight:700;color:#54504F">'+F(totalOper+totalEspec)+'</div>'
           +'<div style="font-size:10px;color:#888;margin-top:2px">Cobrado: '+F(totalCobrado)+' ('+pctCob+'%)</div>'
           +'</div>'
+          +'</div>'
+          // Fila de desglose tipo de ingreso
+          +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px solid #e8e5e0">'
+          +'<div style="font-size:10px;color:#54504F;padding:3px 8px;background:#f0eeec;border-radius:6px">🧾 FESG: <strong>'+F(brFESG)+'</strong></div>'
+          +'<div style="font-size:10px;color:#0F6E56;padding:3px 8px;background:#EDFAF5;border-radius:6px">🏦 Sin fact.·banco: <strong>'+F(brBco)+'</strong></div>'
+          +'<div style="font-size:10px;color:#CC1818;padding:3px 8px;background:#FEF2F2;border-radius:6px">💵 Efectivo: <strong>'+F(brEfec)+'</strong></div>'
+          +'<div style="font-size:10px;color:#1A2B6B;padding:3px 8px;background:#EBF3FB;border-radius:6px;font-weight:700">= '+F(brFESG+brBco+brEfec)+'</div>'
           +'</div>'
           +'</div>';
       })()
