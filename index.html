@@ -6968,13 +6968,31 @@ function renderFacturas() {
   var kp = g('fact-kpis');
   if (kp) kp.innerHTML =
     (function(){
-      var facElec2 = FACTURAS.filter(function(f){ return sgEsReal(f) && sgEsElectronica(f); });
-      var facEfec2 = FACTURAS.filter(function(f){ return sgEsReal(f) && sgEsEfectivo(f); });
+      var _BR = {'BANCOLOMBIA':1,'SUDAMERIS':1,'DAVIVIENDA':1,'BOLD':1,'BANCOLOMBIA / EFECTIVO':1,'SUDAMERIS / EFECTIVO':1};
+      var facElec2 = FACTURAS.filter(function(f){
+        if (!sgEsReal(f)) return false;
+        var num = String(f.num||f.factura||'').trim().toUpperCase();
+        return num.indexOf('FESG')===0;
+      });
+      var facBanco2 = FACTURAS.filter(function(f){
+        if (!sgEsReal(f)) return false;
+        var num = String(f.num||f.factura||'').trim().toUpperCase();
+        var banco = String(f.banco||'').trim().toUpperCase();
+        return (num===''||num==='NAN'||num==='EFECTIVO') && _BR[banco];
+      });
+      var facEfec2 = FACTURAS.filter(function(f){
+        if (!sgEsReal(f)) return false;
+        var num = String(f.num||f.factura||'').trim().toUpperCase();
+        var banco = String(f.banco||'').trim().toUpperCase();
+        return (num===''||num==='NAN'||num==='EFECTIVO') && !_BR[banco];
+      });
       var brElec = facElec2.reduce(function(a,f){return a+(f.bruto||0);},0);
+      var brBanco = facBanco2.reduce(function(a,f){return a+(f.bruto||0);},0);
       var brEfec = facEfec2.reduce(function(a,f){return a+(f.bruto||0);},0);
-      return '<div class="met"><div class="met-l" style="color:#888">Base gravable (electrónica)</div><div class="met-v tb">'+F(brElec)+'</div><div class="met-s">'+facElec2.length+' facturas electrónicas</div></div>'+
-             '<div class="met"><div class="met-l" style="color:#CC1818">💵 Ingreso efectivo</div><div class="met-v" style="color:#CC1818;font-weight:700">'+F(brEfec)+'</div><div class="met-s">'+facEfec2.length+' registros en efectivo</div></div>'+
-             '<div class="met" style="border:1.5px solid rgba(26,43,107,.2)"><div class="met-l" style="color:#1A2B6B">📊 Ingreso operacional total</div><div class="met-v" style="color:#1A2B6B;font-weight:700">'+F(totalBruto)+'</div><div class="met-s">Electrónica + Efectivo</div></div>';
+      return '<div class="met"><div class="met-l" style="color:#888">🧾 Factura electrónica (FESG)</div><div class="met-v tb">'+F(brElec)+'</div><div class="met-s">'+facElec2.length+' con consecutivo</div></div>'+
+             '<div class="met"><div class="met-l" style="color:#0F6E56">🏦 Sin factura · ingresó a banco</div><div class="met-v" style="color:#0F6E56;font-weight:700">'+F(brBanco)+'</div><div class="met-s">'+facBanco2.length+' registros sin consecutivo</div></div>'+
+             '<div class="met"><div class="met-l" style="color:#CC1818">💵 Efectivo puro</div><div class="met-v" style="color:#CC1818;font-weight:700">'+F(brEfec)+'</div><div class="met-s">'+facEfec2.length+' registros en efectivo</div></div>'+
+             '<div class="met" style="border:1.5px solid rgba(26,43,107,.2)"><div class="met-l" style="color:#1A2B6B">📊 Total base gravable</div><div class="met-v" style="color:#1A2B6B;font-weight:700">'+F(brElec+brBanco+brEfec)+'</div><div class="met-s">Sin IVA · reales Ene–Sep</div></div>';
     })()+
     '<div class="met"><div class="met-l" style="color:#0F6E56">IVA generado 19%</div><div class="met-v" style="color:#0F6E56;font-weight:700">+' + F(totalIVA) + '</div><div class="met-s">IVA en facturas</div></div>' +
     /* SG: sin retefuente — régimen simple */
@@ -9485,18 +9503,41 @@ function renderCarteraHome() {
 
   if(kp)kp.innerHTML=
     (function(){
-      var facElec = FACTURAS.filter(function(f){ return sgEsReal(f) && sgEsElectronica(f); });
-      var facEfec = FACTURAS.filter(function(f){ return sgEsReal(f) && sgEsEfectivo(f); });
-      var facElecFESG   = facElec.filter(function(f){ return String(f.num||f.factura||'').toUpperCase().indexOf('FESG')===0; });
-      var facElecSinNum = facElec.filter(function(f){ return String(f.num||f.factura||'').toUpperCase().indexOf('FESG')!==0; });
-      var brutoElec = facElec.reduce(function(a,f){return a+(f.bruto||0);},0);
-      var brutoEfec = facEfec.reduce(function(a,f){return a+(f.bruto||0);},0);
-      var ingresoTotal = brutoElec + brutoEfec;
-      window._SG_BRUTO_ELEC = brutoElec;
-      window._SG_BRUTO_EFEC = brutoEfec;
-      return '<div class="ind"><div class="ind-l">Base gravable (electrónica + transferencia)</div><div class="ind-v tb">'+F(brutoElec)+'</div><div class="ind-s">'+facElecFESG.length+' con FESG · '+facElecSinNum.length+' sin consecutivo</div></div>'+
-             '<div class="ind"><div class="ind-l" style="color:#CC1818">💵 Ingreso efectivo</div><div class="ind-v" style="color:#CC1818;font-weight:700">'+F(brutoEfec)+'</div><div class="ind-s">'+facEfec.length+' registros en efectivo</div></div>'+
-             '<div class="ind" style="border:1.5px solid rgba(204,24,24,.2)"><div class="ind-l" style="color:#1A2B6B">📊 Ingreso operacional total</div><div class="ind-v" style="color:#1A2B6B;font-weight:700">'+F(ingresoTotal)+'</div><div class="ind-s">Electrónica + Efectivo</div></div>';
+      // --- Grupo 1: Factura electrónica con consecutivo FESG
+      var facFESG     = FACTURAS.filter(function(f){
+        if (!sgEsReal(f)) return false;
+        var num = String(f.num||f.factura||'').trim().toUpperCase();
+        return num.indexOf('FESG') === 0;
+      });
+      // --- Grupo 2: Sin factura, ingresó a banco (vacío/EFECTIVO + banco real)
+      var SG_BANCOS_R = {'BANCOLOMBIA':1,'SUDAMERIS':1,'DAVIVIENDA':1,'BOLD':1,'BANCOLOMBIA / EFECTIVO':1,'SUDAMERIS / EFECTIVO':1};
+      var facSinFactBanco = FACTURAS.filter(function(f){
+        if (!sgEsReal(f)) return false;
+        var num   = String(f.num||f.factura||'').trim().toUpperCase();
+        var banco = String(f.banco||'').trim().toUpperCase();
+        var sinNum = (num===''||num==='NAN'||num==='UNDEFINED'||num==='EFECTIVO');
+        return sinNum && SG_BANCOS_R[banco];
+      });
+      // --- Grupo 3: Efectivo puro
+      var facEfecPuro = FACTURAS.filter(function(f){
+        if (!sgEsReal(f)) return false;
+        var num   = String(f.num||f.factura||'').trim().toUpperCase();
+        var banco = String(f.banco||'').trim().toUpperCase();
+        var sinNum = (num===''||num==='NAN'||num==='UNDEFINED'||num==='EFECTIVO');
+        return sinNum && !SG_BANCOS_R[banco];
+      });
+
+      var brFESG        = facFESG.reduce(function(a,f){return a+(f.bruto||0);},0);
+      var brSinFactBco  = facSinFactBanco.reduce(function(a,f){return a+(f.bruto||0);},0);
+      var brEfecPuro    = facEfecPuro.reduce(function(a,f){return a+(f.bruto||0);},0);
+      var ingresoTotal  = brFESG + brSinFactBco + brEfecPuro;
+      window._SG_BRUTO_ELEC = brFESG + brSinFactBco;
+      window._SG_BRUTO_EFEC = brEfecPuro;
+
+      return '<div class="ind"><div class="ind-l">🧾 Factura electrónica (FESG)</div><div class="ind-v tb">'+F(brFESG)+'</div><div class="ind-s">'+facFESG.length+' facturas con consecutivo</div></div>'+
+             '<div class="ind"><div class="ind-l" style="color:#0F6E56">🏦 Sin factura · ingresó a banco</div><div class="ind-v" style="color:#0F6E56;font-weight:700">'+F(brSinFactBco)+'</div><div class="ind-s">'+facSinFactBanco.length+' registros sin consecutivo</div></div>'+
+             '<div class="ind"><div class="ind-l" style="color:#CC1818">💵 Efectivo puro</div><div class="ind-v" style="color:#CC1818;font-weight:700">'+F(brEfecPuro)+'</div><div class="ind-s">'+facEfecPuro.length+' registros en efectivo</div></div>'+
+             '<div class="ind" style="border:1.5px solid rgba(204,24,24,.2)"><div class="ind-l" style="color:#1A2B6B">📊 Total base gravable</div><div class="ind-v" style="color:#1A2B6B;font-weight:700">'+F(ingresoTotal)+'</div><div class="ind-s">Sin IVA · '+FACT_REALES.length+' registros reales</div></div>';
     })()+
     '<div class="ind"><div class="ind-l" style="color:#0F6E56">IVA facturado 19%</div><div class="ind-v" style="color:#0F6E56;font-weight:700">+'+F(dIVA)+'</div><div class="ind-s">IVA generado</div></div>'+
     /* SG: sin retefuente — régimen simple */
