@@ -531,7 +531,6 @@ tbody tr:hover td{background:var(--cyan-light);}
 <div id="tab-nav" style="background:#333;padding:8px 28px;gap:8px;align-items:center;display:none;position:sticky;top:0;z-index:999;">
   <button id="tab-home-btn" onclick="tabHome()" style="padding:6px 18px;border-radius:20px;border:none;cursor:pointer;font-size:12px;font-weight:700;font-family:'Montserrat',Helvetica,Arial,sans-serif;background:#CC1818;color:#fff;">&#127968; Tablero</button>
   <button id="tab-pres-btn" onclick="tabPresupuesto()" style="padding:6px 14px;border-radius:20px;border:1px solid rgba(124,58,237,0.4);cursor:pointer;font-size:11px;font-weight:700;font-family:'Montserrat',Helvetica,Arial,sans-serif;background:rgba(124,58,237,0.12);color:#7C3AED;">📋 Presupuesto</button>
-  <button id="tab-prest-btn" onclick="tabPrestamos()" style="padding:6px 14px;border-radius:20px;border:1px solid rgba(26,43,107,0.4);cursor:pointer;font-size:11px;font-weight:700;font-family:'Montserrat',Helvetica,Arial,sans-serif;background:rgba(26,43,107,0.12);color:#1A2B6B;">🤝 Préstamos</button>
 
   <button id="tab-sync-btn" onclick="alzakCargarDatosSheets()" title="Sincronizar datos desde Google Sheets" style="padding:6px 14px;border-radius:20px;border:1px solid rgba(204,24,24,0.4);cursor:pointer;font-size:11px;font-weight:700;font-family:'Montserrat',Helvetica,Arial,sans-serif;background:rgba(204,24,24,0.15);color:#CC1818;">&#128260; Sincronizar</button>
   <button onclick="alzakGuardarParaEquipo()" title="Guardar datos para que Paula y el equipo los vean" style="padding:6px 14px;border-radius:20px;border:1px solid rgba(100,200,100,0.3);cursor:pointer;font-size:11px;font-weight:700;font-family:'Montserrat',Helvetica,Arial,sans-serif;background:rgba(100,200,100,0.12);color:#90EE90;">&#128190; Guardar</button>
@@ -690,6 +689,38 @@ tbody tr:hover td{background:var(--cyan-light);}
 </div>
 <div id="sg-pagos-detalle-body"></div>
 </div>
+</div>
+
+
+<!-- MÓDULO PRÉSTAMOS SR. CAMILO — recuadro independiente -->
+<div class="card" style="margin-top:12px;margin-bottom:10px;border:1.5px solid rgba(26,43,107,0.2);border-radius:12px;padding:16px 18px">
+  <div style="font-size:10px;font-weight:700;color:#1A2B6B;letter-spacing:.06em;margin-bottom:2px">🤝 PRÉSTAMOS SR. CAMILO</div>
+  <div style="font-size:15px;font-weight:700;color:#54504F;margin-bottom:2px">Control de Deuda · Sr. Camilo</div>
+  <div style="font-size:11px;color:#888;margin-bottom:12px">Deuda base $60.951.675 · Cuota pactada $5.079.306/mes</div>
+
+  <button onclick="(function(){
+    var p=document.getElementById('prest-inline-panel');
+    var a=document.getElementById('prest-inline-arr');
+    if(p.style.display==='none'){
+      p.style.display='block';
+      a.textContent='▲';
+      if(!window._PREST_LOADED){window._PREST_LOADED=true;renderPrestamosInline();}
+    }else{
+      p.style.display='none';
+      a.textContent='▼';
+    }
+  })()"
+    style="width:100%;background:#F0F6FF;border:1px solid #BFDBFE;border-radius:8px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;font-family:inherit;text-align:left;">
+    <span style="font-size:12px;font-weight:700;color:#1A2B6B;">📋 Ver detalle de préstamos y abonos
+      <span id="prest-inline-saldo" style="font-size:11px;font-weight:400;color:#CC1818;margin-left:8px;"></span>
+    </span>
+    <span id="prest-inline-arr" style="font-size:13px;color:#1A2B6B;">▼</span>
+  </button>
+
+  <div id="prest-inline-panel" style="display:none;padding:14px 0 0 0">
+    <div id="prest-inline-kpis" style="margin-bottom:12px"></div>
+    <div id="prest-inline-tabla"></div>
+  </div>
 </div>
 
 <div id="dash-gastos-bloque" style="margin-bottom:12px">
@@ -1215,7 +1246,8 @@ tbody tr:hover td{background:var(--cyan-light);}
 
 </div>
 
-  </div><!-- /h-datos -->
+
+</div><!-- /h-datos -->
   </div><!-- /home-split-left -->
 
   <!-- Divisor deslizable -->
@@ -17172,20 +17204,20 @@ function renderPrestamos() {
   elTabla.innerHTML = '';
 
   // Cargar desde Apps Script
-  var GAS_URL = document.querySelector('meta[name="gas-url"]') ?
-    document.querySelector('meta[name="gas-url"]').content :
-    (window.ALZAK_GAS_URL || '');
+  var GAS_URL = window.ALZAK_GS_URL || window.GS_API_URL || '';
 
   if (!GAS_URL) {
     _renderPrestFallback(elKpi, elTabla);
     return;
   }
 
-  fetch(GAS_URL + '?sheet=Prestamos&id=' + PREST_SHEET_ID + '&t=' + Date.now(), {redirect:'follow'})
+  fetch(GAS_URL + '?action=getPrestamos&sheetId=' + PREST_SHEET_ID + '&t=' + Date.now(), {redirect:'follow'})
     .then(function(r){ return r.json(); })
     .then(function(data){
       var rows = data.rows || data.data || data || [];
-      PREST_DATA = rows.filter(function(r){ return r.fecha || r['fecha']; });
+      if (!Array.isArray(rows) || rows.length === 0) { _renderPrestFallback(elKpi, elTabla); return; }
+      PREST_DATA = rows.filter(function(r){ return r.fecha || r['fecha'] || r['Fecha']; });
+      if (PREST_DATA.length === 0) { _renderPrestFallback(elKpi, elTabla); return; }
       _renderPrestKpis(elKpi);
       _renderPrestTabla(elTabla);
     })
@@ -17323,6 +17355,90 @@ function _renderPrestTabla(el) {
     +'</div></div>';
 }
 // ─────────────────────────────────────────────────────────────────────────────
+
+function renderPrestamosInline() {
+  var elKpi   = document.getElementById('prest-inline-kpis');
+  var elTabla = document.getElementById('prest-inline-tabla');
+  var elSaldo = document.getElementById('prest-inline-saldo');
+  if (!elKpi || !elTabla) return;
+
+  // Si ya tenemos datos del módulo de préstamos úsalos, si no cargar
+  if (PREST_DATA && PREST_DATA.length > 0) {
+    _doRenderInline(elKpi, elTabla, elSaldo);
+    return;
+  }
+
+  elKpi.innerHTML = '<div style="padding:10px;color:#888;font-size:12px">Cargando...</div>';
+
+  // Intentar cargar del GAS
+  var GAS_URL = window.ALZAK_GS_URL || window.GS_API_URL || '';
+  if (GAS_URL) {
+    fetch(GAS_URL + '?tab=_prestamos&t=' + Date.now(), {redirect:'follow'})
+      .then(function(r){ return r.json(); })
+      .then(function(data){
+        var rows = data.rows || [];
+        if (rows.length > 0) {
+          PREST_DATA = rows;
+        } else {
+          _renderPrestFallback(elKpi, elTabla);
+          return;
+        }
+        _doRenderInline(elKpi, elTabla, elSaldo);
+      })
+      .catch(function(){
+        _renderPrestFallback(elKpi, elTabla);
+        _doRenderInline(elKpi, elTabla, elSaldo);
+      });
+  } else {
+    _renderPrestFallback(elKpi, elTabla);
+    _doRenderInline(elKpi, elTabla, elSaldo);
+  }
+}
+
+function _doRenderInline(elKpi, elTabla, elSaldo) {
+  // KPIs compactos
+  var totalPrest=0, totalAbon=0, saldo=0, nPrest=0, nAbon=0;
+  PREST_DATA.forEach(function(r){
+    var tipo = (r.tipo||'').toUpperCase();
+    var val  = _pVal(r.valor);
+    if (tipo==='PRESTAMO'){ totalPrest+=val; nPrest++; }
+    else if(tipo==='ABONO'){ totalAbon+=val; nAbon++; }
+    saldo = _pVal(r.saldo_acumulado);
+  });
+  var pct = totalPrest ? Math.round(totalAbon/totalPrest*100) : 0;
+
+  // Actualizar badge del header
+  if (elSaldo) elSaldo.textContent = '· Saldo: $' + _pFmt(saldo);
+
+  elKpi.innerHTML =
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:10px">'
+    +'<div style="background:#FEF2F2;border-radius:8px;padding:10px 12px">'
+    +'<div style="font-size:9px;font-weight:700;color:#A32D2D;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Total prestado</div>'
+    +'<div style="font-size:16px;font-weight:700;color:#CC1818;font-family:Montserrat,Arial,sans-serif">$'+_pFmt(totalPrest)+'</div>'
+    +'<div style="font-size:9px;color:#A32D2D">'+nPrest+' préstamos</div></div>'
+
+    +'<div style="background:#F0FDF4;border-radius:8px;padding:10px 12px">'
+    +'<div style="font-size:9px;font-weight:700;color:#0F6E56;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Total abonado</div>'
+    +'<div style="font-size:16px;font-weight:700;color:#1D9E75;font-family:Montserrat,Arial,sans-serif">$'+_pFmt(totalAbon)+'</div>'
+    +'<div style="font-size:9px;color:#0F6E56">'+nAbon+' abonos</div></div>'
+
+    +'<div style="background:#EBF3FB;border-radius:8px;padding:10px 12px;border:1.5px solid #CC1818">'
+    +'<div style="font-size:9px;font-weight:700;color:#1A2B6B;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Saldo pendiente</div>'
+    +'<div style="font-size:16px;font-weight:700;color:#CC1818;font-family:Montserrat,Arial,sans-serif">$'+_pFmt(saldo)+'</div>'
+    +'<div style="font-size:9px;color:#1A2B6B">A hoy</div></div>'
+
+    +'<div style="background:#fff;border:1px solid #e8e5e0;border-radius:8px;padding:10px 12px">'
+    +'<div style="font-size:9px;font-weight:700;color:#54504F;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">% Pagado</div>'
+    +'<div style="font-size:16px;font-weight:700;color:#54504F;font-family:Montserrat,Arial,sans-serif">'+pct+'%</div>'
+    +'<div style="height:6px;background:#f0eeec;border-radius:4px;margin-top:4px;overflow:hidden">'
+    +'<div style="width:'+Math.min(pct,100)+'%;height:100%;background:#1D9E75;border-radius:4px"></div></div></div>'
+    +'</div>';
+
+  // Tabla compacta
+  _renderPrestTabla(elTabla);
+}
+
+// ── FIN MÓDULO PRÉSTAMOS ──────────────────────────────────────────────
 
 // Intercept tablero's ir() to also hide pg-conc/pg-balance and update tabs
 document.addEventListener('DOMContentLoaded', function() {
