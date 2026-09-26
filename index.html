@@ -531,6 +531,7 @@ tbody tr:hover td{background:var(--cyan-light);}
 <div id="tab-nav" style="background:#333;padding:8px 28px;gap:8px;align-items:center;display:none;position:sticky;top:0;z-index:999;">
   <button id="tab-home-btn" onclick="tabHome()" style="padding:6px 18px;border-radius:20px;border:none;cursor:pointer;font-size:12px;font-weight:700;font-family:'Montserrat',Helvetica,Arial,sans-serif;background:#CC1818;color:#fff;">&#127968; Tablero</button>
   <button id="tab-pres-btn" onclick="tabPresupuesto()" style="padding:6px 14px;border-radius:20px;border:1px solid rgba(124,58,237,0.4);cursor:pointer;font-size:11px;font-weight:700;font-family:'Montserrat',Helvetica,Arial,sans-serif;background:rgba(124,58,237,0.12);color:#7C3AED;">📋 Presupuesto</button>
+  <button id="tab-prest-btn" onclick="tabPrestamos()" style="padding:6px 14px;border-radius:20px;border:1px solid rgba(26,43,107,0.4);cursor:pointer;font-size:11px;font-weight:700;font-family:'Montserrat',Helvetica,Arial,sans-serif;background:rgba(26,43,107,0.12);color:#1A2B6B;">🤝 Préstamos</button>
 
   <button id="tab-sync-btn" onclick="alzakCargarDatosSheets()" title="Sincronizar datos desde Google Sheets" style="padding:6px 14px;border-radius:20px;border:1px solid rgba(204,24,24,0.4);cursor:pointer;font-size:11px;font-weight:700;font-family:'Montserrat',Helvetica,Arial,sans-serif;background:rgba(204,24,24,0.15);color:#CC1818;">&#128260; Sincronizar</button>
   <button onclick="alzakGuardarParaEquipo()" title="Guardar datos para que Paula y el equipo los vean" style="padding:6px 14px;border-radius:20px;border:1px solid rgba(100,200,100,0.3);cursor:pointer;font-size:11px;font-weight:700;font-family:'Montserrat',Helvetica,Arial,sans-serif;background:rgba(100,200,100,0.12);color:#90EE90;">&#128190; Guardar</button>
@@ -1244,6 +1245,11 @@ tbody tr:hover td{background:var(--cyan-light);}
 </div>
 </div>
 
+<div id="pg-prestamos" class="pg" style="padding:20px 24px;max-width:1100px;margin:0 auto">
+  <div id="prest-kpis" style="margin-bottom:16px"></div>
+  <div id="prest-tabla"></div>
+</div>
+
 <div id="pg-facturas" class="pg">
 
 <div id="fact-kpis" class="g4" style="margin-bottom:12px"></div>
@@ -1290,7 +1296,7 @@ tbody tr:hover td{background:var(--cyan-light);}
 
 <input type="text" id="fact-q" placeholder="Buscar factura, OC..." oninput="renderFacturas()" style="flex:1;min-width:130px">
 
-<div style="display:flex;gap:4px;margin-left:auto">
+<div style="display:flex;gap:4px;margin-left:auto;flex-wrap:wrap">
 
 <button class="btn" id="fact-f-todas" onclick="filtFacturas('todas')" style="font-size:11px;background:#1a1a1a;color:#fff">Todas</button>
 
@@ -1300,6 +1306,15 @@ tbody tr:hover td{background:var(--cyan-light);}
 
 <button class="btn" id="fact-f-pag" onclick="filtFacturas('pagada')" style="font-size:11px">Pagadas</button>
 
+</div>
+
+<div style="display:flex;gap:4px;margin-top:6px;flex-wrap:wrap;padding-top:6px;border-top:1px solid #f0eeec">
+<span style="font-size:10px;color:#aaa;align-self:center;margin-right:2px">Por tipo:</span>
+<button class="btn" id="fact-g-fesg"   onclick="filtGrupo('fesg')"    style="font-size:10px;background:#1A2B6B;color:#fff;padding:3px 8px">🧾 FESG</button>
+<button class="btn" id="fact-g-banco"  onclick="filtGrupo('banco')"   style="font-size:10px;background:#0F6E56;color:#fff;padding:3px 8px">🏦 Sin fact.·Banco</button>
+<button class="btn" id="fact-g-efec"   onclick="filtGrupo('efectivo')" style="font-size:10px;padding:3px 8px">💵 Efectivo</button>
+<button class="btn" id="fact-g-canje"  onclick="filtGrupo('canje')"   style="font-size:10px;background:#7C3AED;color:#fff;padding:3px 8px">🤝 Canje</button>
+<button class="btn" id="fact-g-all"    onclick="filtGrupo('todas')"   style="font-size:10px;background:#54504F;color:#fff;padding:3px 8px">📊 Total base gravable</button>
 </div>
 
 </div>
@@ -2341,7 +2356,8 @@ function alzakCargarDatosPrincipal(url, callback) {
               bruto:       bruto,
               iva:         iva,
               retefuente:  rete,
-              reteiva:     Math.round(iva * 0.15),
+              // ReteIVA 15% solo aplica a facturas electrónicas con consecutivo FESG
+              reteiva:     (function(){ var n=(r['factura']||r['N_Factura']||r['Factura']||'').toString().toUpperCase(); return n.indexOf('FESG')===0 ? Math.round(iva * 0.15) : 0; })(),
               total:       total,
               pagada:      pagada
             };
@@ -6489,6 +6505,7 @@ var FACTURAS_DEFAULT = []; // Datos cargados via CSV/Excel o Apps Script
 var FACTURAS = [];
 
 var FACT_FILTRO    = 'todas';
+var FACT_GRUPO     = 'todas'; // fesg | banco | efectivo | canje | todas
 
 window.FACT_ORD_CAMPO = 'vence';
 
@@ -6633,6 +6650,49 @@ function filtFacturas(f) {
 
   renderFacturas();
 
+}
+
+function filtGrupo(grupo) {
+  FACT_GRUPO = grupo;
+  // Actualizar estilos de botones de grupo
+  var GRUPOS_BTN = {
+    'fesg':    {id:'fact-g-fesg',  bg:'#1A2B6B'},
+    'banco':   {id:'fact-g-banco', bg:'#0F6E56'},
+    'efectivo':{id:'fact-g-efec',  bg:'#CC1818'},
+    'canje':   {id:'fact-g-canje', bg:'#7C3AED'},
+    'todas':   {id:'fact-g-all',   bg:'#54504F'}
+  };
+  Object.keys(GRUPOS_BTN).forEach(function(k) {
+    var btn = g(GRUPOS_BTN[k].id);
+    if (!btn) return;
+    if (k === grupo) {
+      btn.style.background = GRUPOS_BTN[k].bg;
+      btn.style.color = '#fff';
+      btn.style.opacity = '1';
+    } else {
+      btn.style.background = '';
+      btn.style.color = '';
+      btn.style.opacity = '0.5';
+    }
+  });
+  renderFacturas();
+}
+
+// Clasificar una factura en su grupo de ingreso
+function sgGrupoIngreso(f) {
+  var _BRC = {'BANCOLOMBIA':1,'SUDAMERIS':1,'DAVIVIENDA':1,'BOLD':1,'BANCOLOMBIA / EFECTIVO':1,'SUDAMERIS / EFECTIVO':1};
+  var tipo  = (f.tipo||'').toUpperCase();
+  var banco = (f.banco||'').toUpperCase();
+  var num   = (f.num||'').toUpperCase();
+  // Canje primero
+  if (tipo.indexOf('CANJE')>=0 || tipo.indexOf('CAMILO')>=0 || banco==='CANJE' || banco==='SEÑOR CAMILO' || (f.estado||'').toUpperCase()==='CANJE') return 'canje';
+  // FESG
+  if (num.indexOf('FESG')===0) return 'fesg';
+  // Sin factura + banco real
+  var sinNum = (num===''||num==='NAN'||num==='EFECTIVO');
+  if (sinNum && _BRC[banco]) return 'banco';
+  // Efectivo
+  return 'efectivo';
 }
 
 function abrirModalPago(id) {
@@ -7169,12 +7229,49 @@ function renderFacturas() {
   }
 
   // Tabla
-
   var rows = '';
 
-  for (var i = 0; i < lista.length; i++) {
+  // Ordenar por grupo de ingreso cuando se muestra "todas"
+  var GRUPO_ORD = {fesg:0, banco:1, efectivo:2, canje:3};
+  var listaOrd = lista.slice().sort(function(a,b){
+    var ga = GRUPO_ORD[sgGrupoIngreso(a)]||0;
+    var gb = GRUPO_ORD[sgGrupoIngreso(b)]||0;
+    if (ga !== gb) return ga - gb;
+    return (b.bruto||0) - (a.bruto||0);
+  });
 
-    var f = lista[i], est = estadoFact(f), dias = diasHasta(f.vence);
+  var GRUPO_META = {
+    fesg:     {label:'🧾 Factura Electrónica con Consecutivo (FESG)', color:'#1A2B6B', bg:'#EBF3FB'},
+    banco:    {label:'🏦 Sin Factura · Ingresó a Banco',              color:'#0F6E56', bg:'#EDFAF5'},
+    efectivo: {label:'💵 Efectivo Puro',                              color:'#CC1818', bg:'#FEF2F2'},
+    canje:    {label:'🤝 Canje · Camilo · Pharmaser',                 color:'#7C3AED', bg:'#EDE9FE'}
+  };
+
+  var grupoActual = null;
+  var grupoBase   = 0;
+  var grupoN      = 0;
+  var mostrarSeps = (FACT_GRUPO === 'todas');
+
+  for (var i = 0; i < listaOrd.length; i++) {
+
+    var f = listaOrd[i], est = estadoFact(f), dias = diasHasta(f.vence);
+    var gf = sgGrupoIngreso(f);
+
+    // Separador de grupo
+    if (mostrarSeps && gf !== grupoActual) {
+      // Cerrar grupo anterior con subtotal
+      if (grupoActual !== null) {
+        var gm = GRUPO_META[grupoActual]||{};
+        rows += '<tr style="background:'+gm.bg+'"><td colspan="9" style="padding:4px 10px;font-size:10px;font-weight:700;color:'+gm.color+';text-align:right">Subtotal: '+F(grupoBase)+' · '+grupoN+' registros</td></tr>';
+      }
+      grupoActual = gf;
+      grupoBase   = 0;
+      grupoN      = 0;
+      var gm2 = GRUPO_META[gf]||{label:gf, color:'#888', bg:'#f5f5f5'};
+      rows += '<tr style="background:'+gm2.bg+';border-top:2px solid '+gm2.color+'30"><td colspan="9" style="padding:6px 10px;font-size:11px;font-weight:700;color:'+gm2.color+'">'+gm2.label+'</td></tr>';
+    }
+    grupoBase += (f.bruto||0);
+    grupoN++;
 
     var diasTxt = f.pagada ? '✓' : dias < 0 ? '-'+Math.abs(dias)+' d' : '+'+dias+' d';
 
@@ -7223,6 +7320,12 @@ function renderFacturas() {
 
     '</tr>';
 
+  }
+
+  // Cerrar último grupo con subtotal
+  if (mostrarSeps && grupoActual !== null) {
+    var gmlast = GRUPO_META[grupoActual]||{};
+    rows += '<tr style="background:'+(gmlast.bg||'#f5f5f5')+'"><td colspan="9" style="padding:4px 10px;font-size:10px;font-weight:700;color:'+(gmlast.color||'#888')+';text-align:right">Subtotal: '+F(grupoBase)+' · '+grupoN+' registros</td></tr>';
   }
 
   var tb = g('tbody-facturas');
@@ -7483,6 +7586,11 @@ function factFiltrarLista() {
       if (tFil === 'CANJE'      && tipo.indexOf('CANJE') < 0) return false;
       if (tFil === 'CAMILO'     && cli.indexOf('CAMILO CONTRERAS') < 0) return false;
       if (tFil === 'PHARMASER'  && cli.indexOf('PHARMASER') < 0) return false;
+    }
+
+    // Filtro por grupo de ingreso (botones tipo)
+    if (FACT_GRUPO && FACT_GRUPO !== 'todas') {
+      if (sgGrupoIngreso(f) !== FACT_GRUPO) return false;
     }
 
     return true;
@@ -17023,6 +17131,198 @@ function tabPres() {
   if (pb) { pb.style.background='#CC1818'; pb.style.color='#fff'; }
   setTimeout(function(){ try{ renderPresupuesto(); }catch(e){} try{ pfRender(); }catch(e){} try{ fcRender(); }catch(e){} }, 60);
 }
+
+function tabPresupuesto() { tabPres(); }
+
+function tabPrestamos() {
+  var split = document.getElementById('home-split');
+  if (split) split.style.display = 'none';
+  var pgs = document.querySelectorAll('.pg');
+  for (var i=0; i<pgs.length; i++) { pgs[i].classList.remove('on'); pgs[i].style.display='none'; }
+  var pg = document.getElementById('pg-prestamos');
+  if (pg) { pg.classList.add('on'); pg.style.cssText = 'display:block !important; min-height:100vh; width:100%;'; }
+  var tb = document.getElementById('topbar-t');
+  if (tb) tb.textContent = 'Préstamos · Sr. Camilo';
+  ['tab-home-btn','tab-pres-btn','tab-prest-btn'].forEach(function(id){
+    var b = document.getElementById(id);
+    if (b) { b.style.background='rgba(255,255,255,0.12)'; b.style.color='#ccc'; b.style.border='1px solid rgba(255,255,255,0.2)'; }
+  });
+  var pb = document.getElementById('tab-prest-btn');
+  if (pb) { pb.style.background='#1A2B6B'; pb.style.color='#fff'; }
+  setTimeout(renderPrestamos, 80);
+}
+
+// ─── MÓDULO PRÉSTAMOS SR. CAMILO ─────────────────────────────────────────────
+var PREST_DATA = [];
+var PREST_SHEET_ID = '1cX4w_C1sO6n1U0M_MH1nRNcCjAI3TqAlY2i7c_JcFis';
+
+function renderPrestamos() {
+  var elKpi   = document.getElementById('prest-kpis');
+  var elTabla = document.getElementById('prest-tabla');
+  if (!elKpi || !elTabla) return;
+
+  // Si ya tenemos datos, renderizar directamente
+  if (PREST_DATA.length > 0) {
+    _renderPrestKpis(elKpi);
+    _renderPrestTabla(elTabla);
+    return;
+  }
+
+  elKpi.innerHTML = '<div style="padding:20px;color:#888;font-size:13px">Cargando datos de préstamos...</div>';
+  elTabla.innerHTML = '';
+
+  // Cargar desde Apps Script
+  var GAS_URL = document.querySelector('meta[name="gas-url"]') ?
+    document.querySelector('meta[name="gas-url"]').content :
+    (window.ALZAK_GAS_URL || '');
+
+  if (!GAS_URL) {
+    _renderPrestFallback(elKpi, elTabla);
+    return;
+  }
+
+  fetch(GAS_URL + '?sheet=Prestamos&id=' + PREST_SHEET_ID + '&t=' + Date.now(), {redirect:'follow'})
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      var rows = data.rows || data.data || data || [];
+      PREST_DATA = rows.filter(function(r){ return r.fecha || r['fecha']; });
+      _renderPrestKpis(elKpi);
+      _renderPrestTabla(elTabla);
+    })
+    .catch(function(){
+      _renderPrestFallback(elKpi, elTabla);
+    });
+}
+
+function _renderPrestFallback(elKpi, elTabla) {
+  // Datos hardcoded como fallback mientras se conecta el Sheet
+  PREST_DATA = [
+    {fecha:'2025-12-31',concepto:'Préstamo inicial Sr. Camilo a SG 2025',tipo:'PRESTAMO',valor:60951675,saldo_acumulado:60951675,mes:'DICIEMBRE',año:2025},
+    {fecha:'2026-01-18',concepto:'Abono factura Sutrigas',tipo:'ABONO',valor:4233668,saldo_acumulado:56718007,mes:'ENERO',año:2026},
+    {fecha:'2026-01-26',concepto:'Abono Dreams Colombia dic 2025',tipo:'ABONO',valor:1850040,saldo_acumulado:54867967,mes:'ENERO',año:2026},
+    {fecha:'2026-01-26',concepto:'Abono Megatiendas dic 2025',tipo:'ABONO',valor:4268507,saldo_acumulado:50599460,mes:'ENERO',año:2026},
+    {fecha:'2026-01-27',concepto:'Pago publicidad Eyder Elion Yireh efectivo',tipo:'ABONO',valor:9000000,saldo_acumulado:41599460,mes:'ENERO',año:2026},
+    {fecha:'2026-01-27',concepto:'Publicidad política Arnulfo / Jaime Vallejo',tipo:'ABONO',valor:4200000,saldo_acumulado:37399460,mes:'ENERO',año:2026},
+    {fecha:'2026-02-06',concepto:'Abono Invercomer factura enero',tipo:'ABONO',valor:4268513,saldo_acumulado:33130947,mes:'FEBRERO',año:2026},
+    {fecha:'2026-01-26',concepto:'Abono Dreams fact. enero pago Sr. Camilo',tipo:'ABONO',valor:1850050,saldo_acumulado:31280897,mes:'ENERO',año:2026},
+    {fecha:'2026-03-06',concepto:'Préstamo Sr. Camilo a SG 06/03/2026',tipo:'PRESTAMO',valor:6000000,saldo_acumulado:37280897,mes:'MARZO',año:2026},
+    {fecha:'2026-02-25',concepto:'Abono fact. febrero Dreams Colombia',tipo:'ABONO',valor:2035044,saldo_acumulado:35245853,mes:'FEBRERO',año:2026},
+    {fecha:'2026-03-25',concepto:'Abono fact. marzo Dreams Colombia',tipo:'ABONO',valor:2035044,saldo_acumulado:33210809,mes:'MARZO',año:2026},
+    {fecha:'2026-04-15',concepto:'Préstamo Sr. Camilo a SG 15/04/2026',tipo:'PRESTAMO',valor:4000000,saldo_acumulado:37210809,mes:'ABRIL',año:2026},
+    {fecha:'2026-04-20',concepto:'Préstamo Sr. Camilo a SG 20/04/2026',tipo:'PRESTAMO',valor:7000000,saldo_acumulado:44210809,mes:'ABRIL',año:2026},
+    {fecha:'2026-04-28',concepto:'Abono fact. abril Dreams Colombia',tipo:'ABONO',valor:2069793,saldo_acumulado:42141016,mes:'ABRIL',año:2026},
+    {fecha:'2026-05-08',concepto:'Préstamo efectivo comisión Sr. Hernán',tipo:'PRESTAMO',valor:20000000,saldo_acumulado:62141016,mes:'MAYO',año:2026},
+    {fecha:'2026-05-08',concepto:'Abono préstamos arriendo local enero',tipo:'ABONO',valor:22443400,saldo_acumulado:39697616,mes:'MAYO',año:2026},
+    {fecha:'2026-05-11',concepto:'Abono préstamos factura FO-879',tipo:'ABONO',valor:6629279,saldo_acumulado:33068337,mes:'MAYO',año:2026},
+    {fecha:'2026-05-21',concepto:'Pago publicidad Iván Cepeda efectivo',tipo:'ABONO',valor:2300000,saldo_acumulado:30768337,mes:'MAYO',año:2026},
+    {fecha:'2026-07-30',concepto:'Transferencia abono fact. 900 Octocaar',tipo:'ABONO',valor:9000000,saldo_acumulado:21768337,mes:'JULIO',año:2026},
+    {fecha:'2026-07-30',concepto:'Transferencia abono fact. 900 Octocaar',tipo:'ABONO',valor:5950000,saldo_acumulado:15818337,mes:'JULIO',año:2026},
+    {fecha:'2026-08-02',concepto:'Préstamo efectivo Sra. Sandra 2 agosto',tipo:'PRESTAMO',valor:10000000,saldo_acumulado:25818337,mes:'AGOSTO',año:2026}
+  ];
+  _renderPrestKpis(elKpi);
+  _renderPrestTabla(elTabla);
+}
+
+function _pVal(v) { return parseFloat(String(v||'0').replace(/[^0-9.-]/g,''))||0; }
+
+function _renderPrestKpis(el) {
+  var totalPrest=0, totalAbon=0, saldo=0, nPrest=0, nAbon=0;
+  PREST_DATA.forEach(function(r){
+    var tipo = (r.tipo||'').toUpperCase();
+    var val  = _pVal(r.valor);
+    var sal  = _pVal(r.saldo_acumulado);
+    if (tipo==='PRESTAMO'){ totalPrest+=val; nPrest++; }
+    else if(tipo==='ABONO'){ totalAbon+=val; nAbon++; }
+    saldo = sal; // último saldo
+  });
+  var pct = totalPrest ? Math.round(totalAbon/totalPrest*100) : 0;
+
+  el.innerHTML =
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">'
+    +'<div><div style="font-size:15px;font-weight:700;color:#54504F;font-family:Montserrat,Arial,sans-serif">🤝 Préstamos · Sr. Camilo</div>'
+    +'<div style="font-size:11px;color:#888;margin-top:2px">Deuda base $60.951.675 · Cuota pactada $5.079.306/mes</div></div>'
+    +'<button onclick="PREST_DATA=[];renderPrestamos();" style="padding:5px 12px;border-radius:16px;border:1px solid rgba(204,24,24,0.4);background:rgba(204,24,24,0.1);color:#CC1818;cursor:pointer;font-size:11px;font-weight:700;font-family:Montserrat,Arial,sans-serif">↺ Actualizar</button>'
+    +'</div>'
+
+    // Barra de progreso
+    +'<div style="background:#fff;border:1px solid #e8e5e0;border-radius:12px;padding:16px 20px;margin-bottom:12px">'
+    +'<div style="display:flex;justify-content:space-between;font-size:10px;color:#888;font-weight:700;margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em">'
+    +'<span>Progreso pago</span><span>'+pct+'% pagado de $'+_pFmt(totalPrest)+'</span></div>'
+    +'<div style="height:10px;background:#f0eeec;border-radius:6px;overflow:hidden">'
+    +'<div style="width:'+Math.min(pct,100)+'%;height:100%;background:#1D9E75;border-radius:6px;transition:width .6s"></div></div>'
+    +'</div>'
+
+    // KPIs
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:4px">'
+
+    +'<div style="background:#FEF2F2;border-radius:10px;padding:14px 16px">'
+    +'<div style="font-size:10px;font-weight:700;color:#A32D2D;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Total prestado</div>'
+    +'<div style="font-size:22px;font-weight:700;color:#CC1818;font-family:Montserrat,Arial,sans-serif">$'+_pFmt(totalPrest)+'</div>'
+    +'<div style="font-size:10px;color:#A32D2D;margin-top:3px">'+nPrest+' préstamos</div></div>'
+
+    +'<div style="background:#F0FDF4;border-radius:10px;padding:14px 16px">'
+    +'<div style="font-size:10px;font-weight:700;color:#0F6E56;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Total abonado</div>'
+    +'<div style="font-size:22px;font-weight:700;color:#1D9E75;font-family:Montserrat,Arial,sans-serif">$'+_pFmt(totalAbon)+'</div>'
+    +'<div style="font-size:10px;color:#0F6E56;margin-top:3px">'+nAbon+' abonos</div></div>'
+
+    +'<div style="background:#EBF3FB;border-radius:10px;padding:14px 16px;border:2px solid #CC1818">'
+    +'<div style="font-size:10px;font-weight:700;color:#1A2B6B;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Saldo pendiente</div>'
+    +'<div style="font-size:22px;font-weight:700;color:#CC1818;font-family:Montserrat,Arial,sans-serif">$'+_pFmt(saldo)+'</div>'
+    +'<div style="font-size:10px;color:#1A2B6B;margin-top:3px">A hoy</div></div>'
+
+    +'<div style="background:#fff;border:1px solid #e8e5e0;border-radius:10px;padding:14px 16px">'
+    +'<div style="font-size:10px;font-weight:700;color:#54504F;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Cuota mensual</div>'
+    +'<div style="font-size:22px;font-weight:700;color:#54504F;font-family:Montserrat,Arial,sans-serif">$5.079.306</div>'
+    +'<div style="font-size:10px;color:#888;margin-top:3px">$60.9M ÷ 12</div></div>'
+
+    +'</div>';
+}
+
+function _pFmt(v) {
+  return Math.round(v).toLocaleString('es-CO').replace(/,/g,'.');
+}
+
+function _renderPrestTabla(el) {
+  var rows = PREST_DATA.map(function(r, i) {
+    var tipo  = (r.tipo||'').toUpperCase();
+    var val   = _pVal(r.valor);
+    var saldo = _pVal(r.saldo_acumulado);
+    var esPrest = tipo === 'PRESTAMO';
+    var bgRow = i%2===0 ? '#fafafa' : '#fff';
+    var badgeBg = esPrest ? '#FEE2E2' : '#D1FAE5';
+    var badgeColor = esPrest ? '#A32D2D' : '#065F46';
+    var saldoColor = esPrest ? '#CC1818' : '#1D9E75';
+    return '<tr style="background:'+bgRow+';border-bottom:1px solid #f0eeec">'
+      +'<td style="padding:7px 12px;font-size:11px;color:#888;white-space:nowrap">'+(r.fecha||'')+'</td>'
+      +'<td style="padding:7px 12px;font-size:11px;color:'+(esPrest?'#CC1818':'#54504F')+';font-weight:'+(esPrest?'700':'400')+'">'+((r.concepto||r.Concepto||r.CONCEPTO)||'')+'</td>'
+      +'<td style="padding:7px 12px;text-align:center"><span style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:10px;background:'+badgeBg+';color:'+badgeColor+'">'+tipo+'</span></td>'
+      +'<td style="padding:7px 12px;text-align:right;font-size:11px;font-weight:700;color:'+(esPrest?'#CC1818':'#1D9E75')+';white-space:nowrap">$'+_pFmt(val)+'</td>'
+      +'<td style="padding:7px 12px;text-align:right;font-size:11px;font-weight:700;color:'+saldoColor+';white-space:nowrap">$'+_pFmt(saldo)+'</td>'
+      +'<td style="padding:7px 12px;font-size:10px;color:#aaa;white-space:nowrap">'+((r.mes||r.Mes||r.MES)||'')+'</td>'
+      +'</tr>';
+  }).join('');
+
+  el.innerHTML =
+    '<div style="background:#fff;border:1px solid #e8e5e0;border-radius:12px;overflow:hidden;margin-top:16px">'
+    +'<div style="padding:12px 16px;border-bottom:1px solid #f0eeec;font-size:11px;font-weight:700;color:#54504F;text-transform:uppercase;letter-spacing:.05em">📋 Movimientos · '+PREST_DATA.length+' registros</div>'
+    +'<div style="overflow-x:auto">'
+    +'<table style="width:100%;border-collapse:collapse;font-family:Montserrat,Arial,sans-serif">'
+    +'<thead><tr style="background:#F8F7F5">'
+    +'<th style="padding:8px 12px;text-align:left;font-size:10px;color:#888;font-weight:700;border-bottom:1px solid #e8e5e0;white-space:nowrap">Fecha</th>'
+    +'<th style="padding:8px 12px;text-align:left;font-size:10px;color:#888;font-weight:700;border-bottom:1px solid #e8e5e0">Concepto</th>'
+    +'<th style="padding:8px 12px;text-align:center;font-size:10px;color:#888;font-weight:700;border-bottom:1px solid #e8e5e0">Tipo</th>'
+    +'<th style="padding:8px 12px;text-align:right;font-size:10px;color:#888;font-weight:700;border-bottom:1px solid #e8e5e0">Valor</th>'
+    +'<th style="padding:8px 12px;text-align:right;font-size:10px;color:#888;font-weight:700;border-bottom:1px solid #e8e5e0">Saldo acumulado</th>'
+    +'<th style="padding:8px 12px;text-align:left;font-size:10px;color:#888;font-weight:700;border-bottom:1px solid #e8e5e0">Mes</th>'
+    +'</tr></thead>'
+    +'<tbody>'+rows+'</tbody>'
+    +'</table></div>'
+    +'<div style="padding:10px 16px;background:#F8F7F5;display:flex;justify-content:space-between;font-size:11px;color:#888">'
+    +'<span>'+PREST_DATA.filter(function(r){return (r.tipo||'').toUpperCase()==='PRESTAMO';}).length+' préstamos · '+PREST_DATA.filter(function(r){return (r.tipo||'').toUpperCase()==='ABONO';}).length+' abonos</span>'
+    +'<span style="font-weight:700;color:#CC1818">Saldo pendiente: $'+_pFmt(_pVal(PREST_DATA[PREST_DATA.length-1]&&PREST_DATA[PREST_DATA.length-1].saldo_acumulado||0))+'</span>'
+    +'</div></div>';
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 // Intercept tablero's ir() to also hide pg-conc/pg-balance and update tabs
 document.addEventListener('DOMContentLoaded', function() {
