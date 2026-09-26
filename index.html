@@ -698,27 +698,30 @@ tbody tr:hover td{background:var(--cyan-light);}
   <div style="font-size:15px;font-weight:700;color:#54504F;margin-bottom:2px">Control de Deuda · Sr. Camilo</div>
   <div style="font-size:11px;color:#888;margin-bottom:12px">Deuda base $60.951.675 · Cuota pactada $5.079.306/mes</div>
 
+  <!-- KPIs siempre visibles -->
+  <div id="prest-inline-kpis" style="margin-bottom:12px"></div>
+
+  <!-- Botón para desplegar tabla -->
   <button onclick="(function(){
     var p=document.getElementById('prest-inline-panel');
     var a=document.getElementById('prest-inline-arr');
     if(p.style.display==='none'){
       p.style.display='block';
       a.textContent='▲';
-      if(!window._PREST_LOADED){window._PREST_LOADED=true;renderPrestamosInline();}
     }else{
       p.style.display='none';
       a.textContent='▼';
     }
   })()"
     style="width:100%;background:#F0F6FF;border:1px solid #BFDBFE;border-radius:8px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;font-family:inherit;text-align:left;">
-    <span style="font-size:12px;font-weight:700;color:#1A2B6B;">📋 Ver detalle de préstamos y abonos
+    <span style="font-size:12px;font-weight:700;color:#1A2B6B;">📋 Ver movimientos detallados
       <span id="prest-inline-saldo" style="font-size:11px;font-weight:400;color:#CC1818;margin-left:8px;"></span>
     </span>
     <span id="prest-inline-arr" style="font-size:13px;color:#1A2B6B;">▼</span>
   </button>
 
+  <!-- Tabla desplegable -->
   <div id="prest-inline-panel" style="display:none;padding:14px 0 0 0">
-    <div id="prest-inline-kpis" style="margin-bottom:12px"></div>
     <div id="prest-inline-tabla"></div>
   </div>
 </div>
@@ -4680,6 +4683,7 @@ function renderHome() {
 
   renderResumenTablero();
   if (typeof renderTablaClientes === 'function') setTimeout(renderTablaClientes, 200);
+  if (typeof renderPrestamosInline === 'function') setTimeout(renderPrestamosInline, 250);
   if (typeof renderHomeBancosPanel === 'function') setTimeout(renderHomeBancosPanel, 100);
   // Mover pg-conc al panel derecho del split
   setTimeout(function() {
@@ -9652,6 +9656,7 @@ function renderCarteraHome() {
 
   // Solo facturas del mes actual hacia atrás (excluir proyectadas)
   var FACT_REALES = FACTURAS.filter(function(f){ return sgEsReal(f); });
+  window._FACT_R_GLOBAL = FACT_REALES; // expuesto para drill-down chips
 
   var total    = FACT_REALES.reduce(function(a,f){return a+f.total;},0);
 
@@ -10193,7 +10198,7 @@ function rsDrilldown(titulo, facturas, totalLabel) {
 
   foot.innerHTML = lista.length+' registros &nbsp;·&nbsp; Base gravable: <strong>'+F(totalBase)+'</strong> &nbsp;·&nbsp; Total c/IVA: <strong>'+F(totalTotal)+'</strong>';
 
-  modal.style.display = 'flex';
+  modal.style.display = 'flex'; modal.style.alignItems = 'center'; modal.style.justifyContent = 'center';
 }
 
 // ============================================================
@@ -10429,6 +10434,7 @@ function renderResumenTablero() {
 
   // Exponer globalmente para onclick del drill-down
   window._RS_FACOPER = facOper;
+  window._FACT_R_GLOBAL = FACT_R; // sync global
   window._RS_FACESP  = facEspec;
   window._RS_FACTALL = FACT_R;
 
@@ -17191,7 +17197,7 @@ var PREST_SHEET_ID = '1cX4w_C1sO6n1U0M_MH1nRNcCjAI3TqAlY2i7c_JcFis';
 function renderPrestamos() {
   var elKpi   = document.getElementById('prest-kpis');
   var elTabla = document.getElementById('prest-tabla');
-  if (!elKpi || !elTabla) return;
+  if (!elKpi) return;
 
   // Si ya tenemos datos, renderizar directamente
   if (PREST_DATA.length > 0) {
@@ -17434,8 +17440,8 @@ function _doRenderInline(elKpi, elTabla, elSaldo) {
     +'<div style="width:'+Math.min(pct,100)+'%;height:100%;background:#1D9E75;border-radius:4px"></div></div></div>'
     +'</div>';
 
-  // Tabla compacta
-  _renderPrestTabla(elTabla);
+  // Tabla (solo si el contenedor existe)
+  if (elTabla) _renderPrestTabla(elTabla);
 }
 
 // ── FIN MÓDULO PRÉSTAMOS ──────────────────────────────────────────────
