@@ -12955,147 +12955,250 @@ function exportarPDFEstadoResultados() {
 
 }
 
+function sgToggleER(id) {
+  var d = document.getElementById(id);
+  if (d) d.style.display = d.style.display === '' ? 'none' : '';
+}
+
+function sgToggleERRow(rid,ico){var d=document.getElementById(rid);if(d){var shown=d.style.display!=='none';d.style.display=shown?'none':'';var i=document.getElementById(ico);if(i)i.textContent=shown?'▶':'▼';}}
+
 function renderEstadoResultados() {
-  // ── SG: Estado de Resultados completamente reescrito ──────────────
-  var erBody  = g('er-body');
-  var erKpis  = g('er-kpis');
-  var erChart = g('er-chart');
+  var erBody  = document.getElementById('er-body');
+  var erKpis  = document.getElementById('er-kpis');
+  var erChart = document.getElementById('er-chart');
 
   var pagos    = window.SG_PAGOS || [];
-  var facturas = window._FACT_R_GLOBAL || FACTURAS.filter(function(f){ return sgEsReal(f); });
+  var FACT_R   = window._FACT_R_GLOBAL || FACTURAS.filter(function(f){ return sgEsReal(f); });
 
-  if (!facturas.length && !pagos.length) {
+  if (!FACT_R.length && !pagos.length) {
     if (erBody) erBody.innerHTML = '<div style="text-align:center;padding:24px;color:#888">Sincroniza el tablero para cargar datos.</div>';
     return;
   }
 
-  // ── INGRESOS: 3 grupos desplegables ───────────────────────────────
+  // Meses activos
+  var MESES_ORD = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
+  var MESES_SHORT = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
   var _BRC = {'BANCOLOMBIA':1,'SUDAMERIS':1,'DAVIVIENDA':1,'BOLD':1,'BANCOLOMBIA / EFECTIVO':1,'SUDAMERIS / EFECTIVO':1};
-  var grpFESG  = facturas.filter(function(f){ return String(f.num||'').toUpperCase().indexOf('FESG')===0; });
-  var grpBanco = facturas.filter(function(f){ var n=String(f.num||'').toUpperCase(); var b=String(f.banco||'').toUpperCase(); return (n===''||n==='NAN'||n==='EFECTIVO')&&_BRC[b]; });
-  var grpEfec  = facturas.filter(function(f){ var n=String(f.num||'').toUpperCase(); var b=String(f.banco||'').toUpperCase(); return (n===''||n==='NAN'||n==='EFECTIVO')&&!_BRC[b]; });
 
-  var totFESG  = grpFESG.reduce(function(a,f){return a+(f.bruto||0);},0);
-  var totBanco = grpBanco.reduce(function(a,f){return a+(f.bruto||0);},0);
-  var totEfec  = grpEfec.reduce(function(a,f){return a+(f.bruto||0);},0);
-  var totalIng = totFESG + totBanco + totEfec;
-
-  // ── COSTOS: categorías sgCatPago ──────────────────────────────────
-  var SG_CATS = [
-    'Nómina y Seguridad Social','Honorarios','Comisiones de Ventas',
-    'Servicios Públicos','Arriendos','Compra de Equipos e Insumos',
-    'Mantenimiento y Reparaciones','Servicios Generales','Otros Gastos'
-  ];
-  var totCat = {}, itemsCat = {}, totalExcl = 0, totalImptos = 0;
-  SG_CATS.forEach(function(c){ totCat[c]=0; itemsCat[c]=[]; });
-
+  // Detectar meses con datos
+  var mesesConDatos = {};
+  FACT_R.forEach(function(f){ var m=String(f.mes||f['Mes']||'').trim().toUpperCase(); if(m) mesesConDatos[m]=1; });
   pagos.forEach(function(r){
-    var cat = sgCatPago(r.concepto||'');
-    var val = parseFloat(r.valor||0);
-    if (cat==='__EXCLUIR__') { totalExcl+=val; return; }
-    if (cat==='Impuestos y Cargas Fiscales') { totalImptos+=val; return; }
-    totCat[cat] = (totCat[cat]||0)+val;
-    if (!itemsCat[cat]) itemsCat[cat]=[];
-    itemsCat[cat].push(r);
+    var d=String(r.fecha||''); var mn=0;
+    if(/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(d)) mn=parseInt(d.split('/')[1]);
+    else if(/^\d{4}-\d{2}-\d{2}/.test(d)) mn=parseInt(d.split('-')[1]);
+    if(mn>=1&&mn<=12) mesesConDatos[MESES_ORD[mn-1]]=1;
   });
+  var meses = MESES_ORD.filter(function(m){ return mesesConDatos[m]; });
 
-  var totalGastos = SG_CATS.reduce(function(a,c){return a+(totCat[c]||0);},0);
-  var utilOper    = totalIng - totalGastos;
-  var utilNeta    = utilOper - totalImptos;
-  var colUO = utilOper>=0?'#0F6E56':'#CC1818';
-  var colUN = utilNeta>=0?'#0F6E56':'#CC1818';
+  // ── Calcular ingresos por mes y grupo ─────────────────────────────
+  function ingMes(mes, grp) {
+    return FACT_R.filter(function(f){
+      var fm = String(f.mes||f['Mes']||'').trim().toUpperCase();
+      if(fm.indexOf(mes.substring(0,3)) !== 0 && fm !== mes) return false;
+      if(grp==='fesg') return String(f.num||'').toUpperCase().indexOf('FESG')===0;
+      if(grp==='banco'){ var n=String(f.num||'').toUpperCase();var b=String(f.banco||'').toUpperCase();return(n===''||n==='NAN'||n==='EFECTIVO')&&_BRC[b]; }
+      if(grp==='efec'){ var n=String(f.num||'').toUpperCase();var b=String(f.banco||'').toUpperCase();return(n===''||n==='NAN'||n==='EFECTIVO')&&!_BRC[b]; }
+      return true;
+    }).reduce(function(a,f){return a+(f.bruto||0);},0);
+  }
+
+  // ── Calcular gastos por mes y categoría ───────────────────────────
+  var SG_CATS = ['Nómina y Seguridad Social','Honorarios','Comisiones de Ventas',
+    'Servicios Públicos','Arriendos','Compra de Equipos e Insumos',
+    'Mantenimiento y Reparaciones','Servicios Generales','Otros Gastos'];
+
+  function getMesNum(r) {
+    var d=String(r.fecha||'');
+    if(/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(d)) return parseInt(d.split('/')[1]);
+    if(/^\d{4}-\d{2}-\d{2}/.test(d)) return parseInt(d.split('-')[1]);
+    return 0;
+  }
+
+  function gasMes(mes, cat) {
+    var mesIdx = MESES_ORD.indexOf(mes);
+    return pagos.filter(function(r){
+      if(getMesNum(r) !== mesIdx+1) return false;
+      var c = sgCatPago(r.concepto||'');
+      return cat ? c===cat : (c!=='__EXCLUIR__' && c!=='Impuestos y Cargas Fiscales');
+    }).reduce(function(a,r){return a+parseFloat(r.valor||0);},0);
+  }
+
+  function impMes(mes) {
+    var mesIdx = MESES_ORD.indexOf(mes);
+    return pagos.filter(function(r){ return getMesNum(r)===mesIdx+1 && sgCatPago(r.concepto||'')==='Impuestos y Cargas Fiscales'; })
+      .reduce(function(a,r){return a+parseFloat(r.valor||0);},0);
+  }
+
+  // Acumulados
+  var totIng   = meses.reduce(function(a,m){return a+ingMes(m,'all');},0);
+  var totGas   = meses.reduce(function(a,m){return a+gasMes(m,null);},0);
+  var totImp   = meses.reduce(function(a,m){return a+impMes(m);},0);
+  var utilOper = totIng - totGas;
+  var utilNeta = utilOper - totImp;
 
   // ── KPIs ──────────────────────────────────────────────────────────
+  var colUO = utilOper>=0?'#0F6E56':'#CC1818';
+  var colUN = utilNeta>=0?'#0F6E56':'#CC1818';
   if (erKpis) erKpis.innerHTML =
-    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:12px">'
-    +'<div style="background:#F0FDF4;border-radius:8px;padding:10px 12px">'
-    +'<div style="font-size:9px;font-weight:700;color:#0F6E56;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">(+) Ingresos</div>'
-    +'<div style="font-size:17px;font-weight:700;color:#0F6E56">'+F(totalIng)+'</div>'
-    +'<div style="font-size:9px;color:#0F6E56;opacity:.7">'+facturas.length+' registros</div></div>'
-    +'<div style="background:#FEF2F2;border-radius:8px;padding:10px 12px">'
-    +'<div style="font-size:9px;font-weight:700;color:#CC1818;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">(-) Gastos operac.</div>'
-    +'<div style="font-size:17px;font-weight:700;color:#CC1818">'+F(totalGastos)+'</div>'
-    +'<div style="font-size:9px;color:#CC1818;opacity:.7">Excluidos: '+F(totalExcl)+'</div></div>'
-    +'<div style="background:'+(utilOper>=0?'#F0FDF4':'#FEF2F2')+';border-radius:8px;padding:10px 12px;border:2px solid '+colUO+'">'
-    +'<div style="font-size:9px;font-weight:700;color:'+colUO+';text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">(=) Util. operac.</div>'
-    +'<div style="font-size:17px;font-weight:700;color:'+colUO+'">'+F(utilOper)+' '+(utilOper>=0?'🟢':'🔴')+'</div>'
-    +'<div style="font-size:9px;color:'+colUO+';opacity:.7">'+(totalIng?Math.round(utilOper/totalIng*100):0)+'% margen</div></div>'
-    +'<div style="background:'+(utilNeta>=0?'#EBF3FB':'#FEF2F2')+';border-radius:8px;padding:10px 12px;border:2px solid '+colUN+'">'
-    +'<div style="font-size:9px;font-weight:700;color:'+colUN+';text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">(=) Util. neta</div>'
-    +'<div style="font-size:17px;font-weight:700;color:'+colUN+'">'+F(utilNeta)+' '+(utilNeta>=0?'🟢':'🔴')+'</div>'
-    +'<div style="font-size:9px;color:'+colUN+';opacity:.7">Imptos: '+F(totalImptos)+'</div></div>'
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:4px">'
+    +'<div style="background:#F0FDF4;border-radius:8px;padding:10px 12px"><div style="font-size:9px;font-weight:700;color:#0F6E56;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">(+) Ingresos</div><div style="font-size:17px;font-weight:700;color:#0F6E56">'+F(totIng)+'</div><div style="font-size:9px;color:#0F6E56;opacity:.7">'+FACT_R.length+' registros</div></div>'
+    +'<div style="background:#FEF2F2;border-radius:8px;padding:10px 12px"><div style="font-size:9px;font-weight:700;color:#CC1818;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">(-) Gastos operac.</div><div style="font-size:17px;font-weight:700;color:#CC1818">'+F(totGas)+'</div><div style="font-size:9px;color:#CC1818;opacity:.7">'+pagos.filter(function(r){var c=sgCatPago(r.concepto);return c!=="__EXCLUIR__"&&c!=="Impuestos y Cargas Fiscales";}).length+' egresos</div></div>'
+    +'<div style="background:'+(utilOper>=0?'#F0FDF4':'#FEF2F2')+';border-radius:8px;padding:10px 12px;border:2px solid '+colUO+'"><div style="font-size:9px;font-weight:700;color:'+colUO+';text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">(=) Util. operac.</div><div style="font-size:17px;font-weight:700;color:'+colUO+'">'+F(utilOper)+' '+(utilOper>=0?'🟢':'🔴')+'</div><div style="font-size:9px;color:'+colUO+';opacity:.7">'+(totIng?Math.round(utilOper/totIng*100):0)+'% margen</div></div>'
+    +'<div style="background:'+(utilNeta>=0?'#EBF3FB':'#FEF2F2')+';border-radius:8px;padding:10px 12px;border:2px solid '+colUN+'"><div style="font-size:9px;font-weight:700;color:'+colUN+';text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">(=) Util. neta</div><div style="font-size:17px;font-weight:700;color:'+colUN+'">'+F(utilNeta)+' '+(utilNeta>=0?'🟢':'🔴')+'</div><div style="font-size:9px;color:'+colUN+';opacity:.7">Imptos: '+F(totImp)+'</div></div>'
     +'</div>';
 
-  // ── TABLA DETALLADA ───────────────────────────────────────────────
-  function secHeader(label, color) {
-    return '<tr style="background:'+color+'"><td colspan="2" style="padding:7px 14px;font-size:11px;font-weight:700;color:#fff;letter-spacing:.05em">'+label+'</td></tr>';
-  }
-  function detRow(label, val, sub, color, indent) {
-    var bg = indent ? '#fafafa' : '#fff';
-    return '<tr style="background:'+bg+';border-bottom:1px solid #f0eeec;cursor:pointer" onclick="var nx=this.nextElementSibling;if(nx)nx.style.display=nx.style.display===\'none\'?\'table-row\':\'none\'">'
-      +'<td style="padding:'+(indent?'5px 14px 5px 28px':'7px 14px')+';color:'+(color||'#54504F')+';font-weight:'+(indent?'400':'600')+'">'+label+(sub?' <span style="font-size:9px;color:#aaa;font-weight:400">'+sub+'</span>':'')+'</td>'
-      +'<td style="padding:'+(indent?'5px 14px':'7px 14px')+';text-align:right;font-weight:'+(indent?'400':'700')+';color:'+(color||'#CC1818')+'">'+F(val)+'</td>'
-      +'</tr>';
-  }
+  if (erChart) erChart.innerHTML = '';
 
-  // Función para hacer filas de detalle desplegables
-  function ingGrpRow(label, val, items, color, icon) {
-    if (!val) return '';
-    var id = 'erg' + Math.round(Math.random()*999999);
-    var rows = items.slice(0,50).map(function(f,i){
-      return '<tr style="background:'+(i%2===0?'#f9fff9':'#fff')+'"><td style="padding:4px 28px;color:#54504F;font-size:10px">'+(f.num||f.cliente||'—')+'</td><td style="padding:4px 14px;text-align:right;color:#0F6E56;font-size:10px">'+F(f.bruto||0)+'</td></tr>';
-    }).join('');
-    if(items.length>50) rows += '<tr><td colspan="2" style="padding:4px 28px;color:#aaa;font-size:9px">...y '+(items.length-50)+' más</td></tr>';
-    return '<tr style="background:#F8FFF8;border-bottom:1px solid #e8f5e8;cursor:pointer" onclick="sgToggleER(\''+id+'\')"><td style="padding:7px 14px;color:'+color+';font-weight:600">'+icon+' '+label+' <span style="font-size:9px;color:#aaa;font-weight:400">'+items.length+' registros · clic para ver</span></td><td style="padding:7px 14px;text-align:right;font-weight:700;color:'+color+'">'+F(val)+'</td></tr>'
-      + '<tr id="'+id+'" style="display:none"><td colspan="2" style="padding:0"><table style="width:100%;border-collapse:collapse">'+rows+'</table></td></tr>';
+  // ── TABLA MES A MES ───────────────────────────────────────────────
+  var colW = 'min-width:90px;text-align:right;padding:6px 8px;font-size:11px;';
+
+  // Función celda numérica
+  function td(v, bold, color) {
+    var style = colW + (bold?'font-weight:700;':'') + (color?'color:'+color+';':'');
+    return '<td style="'+style+'">' + (v===0?'<span style="color:#ddd">—</span>':F(v)) + '</td>';
   }
-  function gasGrpRow(label, val, items, color) {
-    if (!val) return '';
-    var id = 'erg' + Math.round(Math.random()*999999);
-    var pct = totalGastos ? Math.round(val/totalGastos*100) : 0;
-    var rows = items.slice(0,50).map(function(r,i){
-      return '<tr style="background:'+(i%2===0?'#fff9f9':'#fff')+'"><td style="padding:4px 28px;color:#54504F;font-size:10px">'+String(r.concepto||'').substring(0,65)+'</td><td style="padding:4px 14px;text-align:right;color:#CC1818;font-size:10px">'+F(r.valor||0)+'</td></tr>';
-    }).join('');
-    if(items.length>50) rows += '<tr><td colspan="2" style="padding:4px 28px;color:#aaa;font-size:9px">...y '+(items.length-50)+' más</td></tr>';
-    return '<tr style="background:#fff9f9;border-bottom:1px solid #fee;cursor:pointer" onclick="sgToggleER(\''+id+'\')"><td style="padding:7px 14px;color:'+(color||'#CC1818')+';font-weight:600">'+label+' <span style="font-size:9px;color:#aaa;font-weight:400">'+pct+'% · '+items.length+' egresos · clic</span></td><td style="padding:7px 14px;text-align:right;font-weight:700;color:'+(color||'#CC1818')+'">'+F(val)+'</td></tr>'
-      + '<tr id="'+id+'" style="display:none"><td colspan="2" style="padding:0"><table style="width:100%;border-collapse:collapse">'+rows+'</table></td></tr>';
+  function tdRed(v) { return td(v, true, v<0?'#CC1818':v>0?'#0F6E56':'#888'); }
+
+  // Header
+  var headerCols = meses.map(function(m,i){ return '<th style="'+colW+'font-weight:700;color:#ccc;font-size:10px;background:#2D2D2D;white-space:nowrap">'+MESES_SHORT[MESES_ORD.indexOf(m)]+'</th>'; }).join('');
+  var html = '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px;font-family:Montserrat,Arial,sans-serif">';
+  html += '<thead><tr style="background:#2D2D2D"><th style="padding:8px 14px;text-align:left;color:#fff;font-size:10px;font-weight:700;white-space:nowrap;min-width:200px">CONCEPTO</th>'
+    + headerCols
+    + '<th style="'+colW+'font-weight:700;color:#FFD700;font-size:10px;background:#1a1a1a;white-space:nowrap">ACUMULADO</th></tr></thead><tbody>';
+
+  // ── BLOQUE INGRESOS ───────────────────────────────────────────────
+  function secRow(label, color) {
+    return '<tr style="background:'+color+'"><td colspan="'+(meses.length+2)+'" style="padding:7px 14px;font-weight:700;color:#fff;font-size:11px;letter-spacing:.05em">'+label+'</td></tr>';
   }
 
-  var html = '<table style="width:100%;border-collapse:collapse;font-size:11px;font-family:Montserrat,Arial,sans-serif">'
-    +'<thead><tr style="background:#2D2D2D"><th style="padding:8px 14px;text-align:left;color:#fff;font-size:10px;font-weight:700">CONCEPTO</th><th style="padding:8px 14px;text-align:right;color:#fff;font-size:10px;font-weight:700">VALOR BASE GRAVABLE</th></tr></thead><tbody>';
+  html += secRow('(+) INGRESOS OPERACIONALES', '#1A2B6B');
 
-  // INGRESOS
-  html += secHeader('(+) INGRESOS OPERACIONALES · '+F(totalIng), '#1A2B6B');
-  html += ingGrpRow('Factura electrónica (FESG)', totFESG, grpFESG, '#1A2B6B', '🧾');
-  html += ingGrpRow('Sin factura · ingresó a banco', totBanco, grpBanco, '#0F6E56', '🏦');
-  html += ingGrpRow('Efectivo puro', totEfec, grpEfec, '#CC1818', '💵');
+  // Sub-grupos de ingreso desplegables
+  var ingGrups = [
+    {key:'fesg',  label:'🧾 Factura electrónica (FESG)', color:'#1A2B6B'},
+    {key:'banco', label:'🏦 Sin factura · ingresó a banco', color:'#0F6E56'},
+    {key:'efec',  label:'💵 Efectivo puro', color:'#CC1818'}
+  ];
 
-  // COSTOS
-  html += secHeader('(-) GASTOS OPERACIONALES · '+F(totalGastos), '#7C2D12');
-  SG_CATS.forEach(function(cat){
-    html += gasGrpRow(cat, totCat[cat]||0, itemsCat[cat]||[], '#CC1818');
+  ingGrups.forEach(function(grp) {
+    var vals = meses.map(function(m){ return ingMes(m, grp.key); });
+    var acc  = vals.reduce(function(a,v){return a+v;},0);
+    if (!acc) return;
+    var rid  = 'er-ing-'+grp.key;
+    // Header row — clickeable
+    html += '<tr style="background:#F0F6FF;border-bottom:1px solid #e0eeff;cursor:pointer" onclick="sgToggleERRow(\''+rid+'\',\''+rid+'-ico\')">'; 
+    html += '<td style="padding:7px 14px;color:'+grp.color+';font-weight:600"><span id="'+rid+'-ico">▶</span> '+grp.label+'</td>';
+    vals.forEach(function(v){ html += td(v, false, grp.color); });
+    html += '<td style="'+colW+'font-weight:700;color:'+grp.color+'">'+F(acc)+'</td></tr>';
+    // Detail rows — collapsed
+    html += '<tbody id="'+rid+'" style="display:none">';
+    var items = FACT_R.filter(function(f){
+      var n=String(f.num||'').toUpperCase(); var b=String(f.banco||'').toUpperCase();
+      if(grp.key==='fesg') return n.indexOf('FESG')===0;
+      if(grp.key==='banco') return (n===''||n==='NAN'||n==='EFECTIVO')&&_BRC[b];
+      return (n===''||n==='NAN'||n==='EFECTIVO')&&!_BRC[b];
+    }).sort(function(a,b){return (b.bruto||0)-(a.bruto||0);});
+    // Group by cliente
+    var byCliente = {};
+    items.forEach(function(f){ var c=f.cliente||'—'; if(!byCliente[c])byCliente[c]={}; var m=String(f.mes||f['Mes']||'').trim().toUpperCase(); byCliente[c][m]=(byCliente[c][m]||0)+(f.bruto||0); });
+    Object.keys(byCliente).sort().forEach(function(cli,ci){
+      html += '<tr style="background:'+(ci%2===0?'#f5f8ff':'#eef2ff')+'">';
+      html += '<td style="padding:5px 14px 5px 28px;color:#54504F;font-size:10px">'+cli+'</td>';
+      meses.forEach(function(m){ html += td(byCliente[cli][m]||0, false, '#1A2B6B'); });
+      var cliAcc = Object.values(byCliente[cli]).reduce(function(a,v){return a+v;},0);
+      html += '<td style="'+colW+'color:#1A2B6B;font-weight:600;font-size:10px">'+F(cliAcc)+'</td></tr>';
+    });
+    html += '</tbody>';
   });
 
-  // RESULTADOS
-  html += '<tr style="background:'+(utilOper>=0?'#1A2B6B':'#7C2D12')+'">'
-    +'<td style="padding:9px 14px;font-weight:700;color:#fff;font-size:12px">(=) UTILIDAD OPERACIONAL</td>'
-    +'<td style="padding:9px 14px;text-align:right;font-weight:700;color:#FFD700;font-size:13px">'+F(utilOper)+' '+(utilOper>=0?'🟢':'🔴')+'</td></tr>';
+  // Total ingresos
+  var ingVals = meses.map(function(m){ return ingMes(m,'all'); });
+  html += '<tr style="background:#1A2B6B">';
+  html += '<td style="padding:7px 14px;color:#fff;font-weight:700">Total Ingresos</td>';
+  ingVals.forEach(function(v){ html += '<td style="'+colW+'font-weight:700;color:#FFD700">'+F(v)+'</td>'; });
+  html += '<td style="'+colW+'font-weight:700;color:#FFD700">'+F(totIng)+'</td></tr>';
 
-  if (totalImptos) {
-    html += '<tr style="background:#fafafa;border-bottom:1px solid #f0eeec"><td style="padding:7px 14px;color:#888">(−) Impuestos y cargas fiscales</td><td style="padding:7px 14px;text-align:right;color:#888">'+F(totalImptos)+'</td></tr>';
+  // ── BLOQUE GASTOS ─────────────────────────────────────────────────
+  html += secRow('(-) GASTOS OPERACIONALES', '#7C2D12');
+
+  SG_CATS.forEach(function(cat, ci) {
+    var vals = meses.map(function(m){ return gasMes(m, cat); });
+    var acc  = vals.reduce(function(a,v){return a+v;},0);
+    if (!acc) return;
+    var rid = 'er-cat-'+ci;
+    html += '<tr style="background:#fff9f9;border-bottom:1px solid #fee;cursor:pointer" onclick="sgToggleERRow(\''+rid+'\',\''+rid+'-ico\')">'; 
+    html += '<td style="padding:7px 14px;color:#CC1818;font-weight:600"><span id="'+rid+'-ico">▶</span> '+cat+'</td>';
+    vals.forEach(function(v){ html += td(v, false, '#CC1818'); });
+    html += '<td style="'+colW+'font-weight:700;color:#CC1818">'+F(acc)+'</td></tr>';
+    // Detail — by concepto agrupado
+    html += '<tbody id="'+rid+'" style="display:none">';
+    var mesIdx_map = {};
+    MESES_ORD.forEach(function(m,i){ mesIdx_map[m]=i+1; });
+    var items = pagos.filter(function(r){ return sgCatPago(r.concepto||'')===cat; });
+    // Group by concepto (truncated to 40 chars)
+    var byCon = {};
+    items.forEach(function(r){
+      var c = String(r.concepto||'').substring(0,50);
+      var mn = getMesNum(r);
+      var m = mn>=1&&mn<=12 ? MESES_ORD[mn-1] : '';
+      if(!byCon[c]) byCon[c]={};
+      if(m) byCon[c][m]=(byCon[c][m]||0)+parseFloat(r.valor||0);
+    });
+    Object.keys(byCon).sort(function(a,b){
+      var va=Object.values(byCon[a]).reduce(function(s,v){return s+v;},0);
+      var vb=Object.values(byCon[b]).reduce(function(s,v){return s+v;},0);
+      return vb-va;
+    }).slice(0,60).forEach(function(con,ri){
+      html += '<tr style="background:'+(ri%2===0?'#fff5f5':'#fff')+'">';
+      html += '<td style="padding:4px 14px 4px 28px;color:#54504F;font-size:10px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+con+'">'+con+'</td>';
+      meses.forEach(function(m){ html += td(byCon[con][m]||0, false, '#CC1818'); });
+      var conAcc = Object.values(byCon[con]).reduce(function(a,v){return a+v;},0);
+      html += '<td style="'+colW+'color:#CC1818;font-size:10px">'+F(conAcc)+'</td></tr>';
+    });
+    if(Object.keys(byCon).length>60) html += '<tr><td colspan="'+(meses.length+2)+'" style="padding:4px 28px;color:#aaa;font-size:9px">...y '+(Object.keys(byCon).length-60)+' egresos más</td></tr>';
+    html += '</tbody>';
+  });
+
+  // Total gastos
+  var gasVals = meses.map(function(m){ return gasMes(m, null); });
+  html += '<tr style="background:#7C2D12">';
+  html += '<td style="padding:7px 14px;color:#fff;font-weight:700">Total Gastos</td>';
+  gasVals.forEach(function(v){ html += '<td style="'+colW+'font-weight:700;color:#FFD700">'+F(v)+'</td>'; });
+  html += '<td style="'+colW+'font-weight:700;color:#FFD700">'+F(totGas)+'</td></tr>';
+
+  // ── UTILIDAD OPERACIONAL ──────────────────────────────────────────
+  var uoVals = meses.map(function(m,i){ return ingVals[i]-gasVals[i]; });
+  html += '<tr style="background:#1A2B6B">';
+  html += '<td style="padding:9px 14px;color:#fff;font-weight:700;font-size:12px">(=) UTILIDAD OPERACIONAL</td>';
+  uoVals.forEach(function(v){ html += '<td style="'+colW+'font-weight:700;font-size:12px;color:'+(v>=0?'#4ADE80':'#FCA5A5')+'">'+F(v)+'</td>'; });
+  html += '<td style="'+colW+'font-weight:700;font-size:12px;color:'+(utilOper>=0?'#FFD700':'#FCA5A5')+'">'+F(utilOper)+'</td></tr>';
+
+  // Impuestos
+  if (totImp) {
+    var impVals = meses.map(function(m){ return impMes(m); });
+    html += '<tr style="background:#fafafa;border-bottom:1px solid #eee">';
+    html += '<td style="padding:6px 14px;color:#888">(−) Impuestos y cargas fiscales</td>';
+    impVals.forEach(function(v){ html += td(v, false, '#888'); });
+    html += '<td style="'+colW+'color:#888">'+F(totImp)+'</td></tr>';
   }
-  if (totalExcl) {
-    html += '<tr style="background:#fafafa"><td style="padding:5px 14px;font-size:10px;color:#aaa">ℹ️ Excluidos del ER (traslados, préstamos, devoluciones)</td><td style="padding:5px 14px;text-align:right;font-size:10px;color:#aaa">'+F(totalExcl)+'</td></tr>';
-  }
 
-  html += '<tr style="background:'+(utilNeta>=0?'#0F6E56':'#CC1818')+'">'
-    +'<td style="padding:10px 14px;font-weight:700;color:#fff;font-size:13px">(=) UTILIDAD NETA</td>'
-    +'<td style="padding:10px 14px;text-align:right;font-weight:700;color:#FFD700;font-size:14px">'+F(utilNeta)+' '+(utilNeta>=0?'🟢':'🔴')+'</td></tr>';
+  // Utilidad neta
+  var unVals = meses.map(function(m,i){ return uoVals[i]-impMes(m); });
+  html += '<tr style="background:'+(utilNeta>=0?'#0F6E56':'#CC1818')+'">';
+  html += '<td style="padding:10px 14px;color:#fff;font-weight:700;font-size:13px">(=) UTILIDAD NETA</td>';
+  unVals.forEach(function(v){ html += '<td style="'+colW+'font-weight:700;font-size:13px;color:#FFD700">'+F(v)+'</td>'; });
+  html += '<td style="'+colW+'font-weight:700;font-size:13px;color:#FFD700">'+F(utilNeta)+'</td></tr>';
 
-  html += '</tbody></table>';
+  // Margen %
+  html += '<tr style="background:#111">';
+  html += '<td style="padding:5px 14px;color:#888;font-size:10px">Margen %</td>';
+  uoVals.forEach(function(v,i){ var pct=ingVals[i]?Math.round(v/ingVals[i]*100):0; html += '<td style="'+colW+'font-size:10px;color:'+(pct>=0?'#4ADE80':'#FCA5A5')+'">'+pct+'%</td>'; });
+  var pctAcc=totIng?Math.round(utilNeta/totIng*100):0;
+  html += '<td style="'+colW+'font-size:10px;font-weight:700;color:'+(pctAcc>=0?'#FFD700':'#FCA5A5')+'">'+pctAcc+'%</td></tr>';
 
+  html += '</tbody></table></div>';
   if (erBody) erBody.innerHTML = html;
-  if (erChart) erChart.innerHTML = ''; // limpia el chart viejo
 }
 
 
