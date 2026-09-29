@@ -677,7 +677,10 @@ tbody tr:hover td{background:var(--cyan-light);}
 <div style="font-size:11px;color:#888;margin-top:2px">Todo lo pagado &middot; dividido por Efectivo y Banco</div>
 </div>
 <div id="sg-pagos-kpis" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"></div>
-<div id="sg-pagos-chart" style="margin-top:14px"></div>
+<div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:14px;align-items:flex-start">
+  <div id="sg-pagos-chart" style="flex:2;min-width:280px"></div>
+  <div id="sg-pagos-pie" style="flex:1;min-width:220px;max-width:320px"></div>
+</div>
 <div onclick="sgTogglePagosDetalle()" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:#f5f4f0;border-radius:8px;margin-top:14px">
 <span style="font-size:12px;font-weight:700;color:#CC1818">&#128203; Ver detalle de pagos por categor&iacute;a</span>
 <span id="sg-pagos-detalle-ico" style="font-size:11px;color:#888">&#9660;</span>
@@ -12992,13 +12995,22 @@ function renderEstadoResultados() {
   var meses = MESES_ORD.filter(function(m){ return mesesConDatos[m]; });
 
   // ── Calcular ingresos por mes y grupo ─────────────────────────────
+  function esCanje(f) {
+    var tipo = (f.tipo||'').toUpperCase();
+    var cli  = (f.cliente||'').toUpperCase();
+    return tipo.indexOf('CANJE')>=0 || tipo.indexOf('CAMILO')>=0 ||
+           tipo.indexOf('PHARMASER')>=0 || cli.indexOf('CAMILO CONTRERAS')>=0 ||
+           cli.indexOf('PHARMASER')>=0;
+  }
+
   function ingMes(mes, grp) {
     return FACT_R.filter(function(f){
       var fm = String(f.mes||f['Mes']||'').trim().toUpperCase();
       if(fm.indexOf(mes.substring(0,3)) !== 0 && fm !== mes) return false;
-      if(grp==='fesg') return String(f.num||'').toUpperCase().indexOf('FESG')===0;
-      if(grp==='banco'){ var n=String(f.num||'').toUpperCase();var b=String(f.banco||'').toUpperCase();return(n===''||n==='NAN'||n==='EFECTIVO')&&_BRC[b]; }
-      if(grp==='efec'){ var n=String(f.num||'').toUpperCase();var b=String(f.banco||'').toUpperCase();return(n===''||n==='NAN'||n==='EFECTIVO')&&!_BRC[b]; }
+      if(grp==='canje')  return esCanje(f);
+      if(grp==='fesg')   return !esCanje(f) && String(f.num||'').toUpperCase().indexOf('FESG')===0;
+      if(grp==='banco'){  var n=String(f.num||'').toUpperCase();var b=String(f.banco||'').toUpperCase();return !esCanje(f)&&(n===''||n==='NAN'||n==='EFECTIVO')&&_BRC[b]; }
+      if(grp==='efec'){   var n=String(f.num||'').toUpperCase();var b=String(f.banco||'').toUpperCase();return !esCanje(f)&&(n===''||n==='NAN'||n==='EFECTIVO')&&!_BRC[b]; }
       return true;
     }).reduce(function(a,f){return a+(f.bruto||0);},0);
   }
@@ -13078,7 +13090,8 @@ function renderEstadoResultados() {
   var ingGrups = [
     {key:'fesg',  label:'🧾 Factura electrónica (FESG)', color:'#1A2B6B'},
     {key:'banco', label:'🏦 Sin factura · ingresó a banco', color:'#0F6E56'},
-    {key:'efec',  label:'💵 Efectivo puro', color:'#CC1818'}
+    {key:'efec',  label:'💵 Efectivo puro', color:'#CC1818'},
+    {key:'canje', label:'🤝 Canje · Camilo · Pharmaser', color:'#7C3AED'}
   ];
 
   ingGrups.forEach(function(grp) {
@@ -13095,15 +13108,17 @@ function renderEstadoResultados() {
     html += '<tbody id="'+rid+'" style="display:none">';
     var items = FACT_R.filter(function(f){
       var n=String(f.num||'').toUpperCase(); var b=String(f.banco||'').toUpperCase();
-      if(grp.key==='fesg') return n.indexOf('FESG')===0;
-      if(grp.key==='banco') return (n===''||n==='NAN'||n==='EFECTIVO')&&_BRC[b];
-      return (n===''||n==='NAN'||n==='EFECTIVO')&&!_BRC[b];
+      if(grp.key==='canje')  return esCanje(f);
+      if(grp.key==='fesg')   return !esCanje(f) && n.indexOf('FESG')===0;
+      if(grp.key==='banco')  return !esCanje(f) && (n===''||n==='NAN'||n==='EFECTIVO')&&_BRC[b];
+      return !esCanje(f) && (n===''||n==='NAN'||n==='EFECTIVO')&&!_BRC[b];
     }).sort(function(a,b){return (b.bruto||0)-(a.bruto||0);});
     // Group by cliente
     var byCliente = {};
     items.forEach(function(f){ var c=f.cliente||'—'; if(!byCliente[c])byCliente[c]={}; var m=String(f.mes||f['Mes']||'').trim().toUpperCase(); byCliente[c][m]=(byCliente[c][m]||0)+(f.bruto||0); });
     Object.keys(byCliente).sort().forEach(function(cli,ci){
-      html += '<tr style="background:'+(ci%2===0?'#f5f8ff':'#eef2ff')+'">';
+      var rowBg = grp.key==='canje' ? (ci%2===0?'#f5f0ff':'#ede9fe') : (ci%2===0?'#f5f8ff':'#eef2ff');
+      html += '<tr style="background:'+rowBg+'">';
       html += '<td style="padding:5px 14px 5px 28px;color:#54504F;font-size:10px">'+cli+'</td>';
       meses.forEach(function(m){ html += td(byCliente[cli][m]||0, false, '#1A2B6B'); });
       var cliAcc = Object.values(byCliente[cli]).reduce(function(a,v){return a+v;},0);
@@ -22669,6 +22684,7 @@ function sgClickPagoChart(mes, anio, fuente) {
   // Re-render: chart (highlight) + detalle (filtro)
   if (typeof sgRenderPagos === 'function') sgRenderPagos();
   if (typeof sgRenderPagosDetalle === 'function') sgRenderPagosDetalle();
+  if (typeof sgRenderPagosPie === 'function') sgRenderPagosPie();
   if (window.SG_PAGO_SEL && p) setTimeout(function(){ p.scrollIntoView({behavior:'smooth', block:'start'}); }, 100);
 }
 
@@ -22721,6 +22737,58 @@ function sgCatPago(concepto) {
 }
 
 var SG_PAGOS_CAT_ABIERTAS = {};
+
+function sgRenderPagosPie() {
+  var el = document.getElementById('sg-pagos-pie');
+  if (!el) return;
+  var pagos = window.SG_PAGOS || [];
+  if (!pagos.length) { el.innerHTML = ''; return; }
+
+  // Agrupar por categoría (excluir __EXCLUIR__ e impuestos)
+  var cats = {}, total = 0;
+  pagos.forEach(function(r){
+    var cat = sgCatPago(r.concepto||'');
+    if (cat === '__EXCLUIR__' || cat === 'Impuestos y Cargas Fiscales') return;
+    var v = parseFloat(r.valor||0);
+    cats[cat] = (cats[cat]||0) + v;
+    total += v;
+  });
+
+  var COLORS = ['#CC1818','#1A2B6B','#0F6E56','#B45309','#7C3AED','#0C447C','#854F0B','#166534','#9F1239'];
+  var sorted = Object.keys(cats).sort(function(a,b){return cats[b]-cats[a];});
+
+  // SVG pie chart
+  var cx=100, cy=100, r=85, startAngle=0;
+  var slices = '';
+  sorted.forEach(function(cat,i){
+    var pct = cats[cat]/total;
+    var angle = pct * 2 * Math.PI;
+    var x1 = cx + r * Math.sin(startAngle);
+    var y1 = cy - r * Math.cos(startAngle);
+    var x2 = cx + r * Math.sin(startAngle + angle);
+    var y2 = cy - r * Math.cos(startAngle + angle);
+    var large = angle > Math.PI ? 1 : 0;
+    var col = COLORS[i % COLORS.length];
+    slices += '<path d="M'+cx+','+cy+' L'+x1+','+y1+' A'+r+','+r+' 0 '+large+',1 '+x2+','+y2+' Z" fill="'+col+'" opacity="0.9" stroke="#fff" stroke-width="1.5"><title>'+cat+': '+F(cats[cat])+' ('+Math.round(pct*100)+'%)</title></path>';
+    startAngle += angle;
+  });
+
+  // Leyenda
+  var legend = sorted.slice(0,9).map(function(cat,i){
+    var pct = Math.round(cats[cat]/total*100);
+    return '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">'
+      +'<div style="width:10px;height:10px;border-radius:2px;background:'+COLORS[i%COLORS.length]+';flex-shrink:0"></div>'
+      +'<div style="font-size:9px;color:#54504F;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+cat+'">'+cat+'</div>'
+      +'<div style="font-size:9px;font-weight:700;color:'+COLORS[i%COLORS.length]+';white-space:nowrap">'+pct+'%</div>'
+      +'</div>';
+  }).join('');
+
+  el.innerHTML =
+    '<div style="font-size:10px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Composición de gastos</div>'
+    +'<svg width="200" height="200" viewBox="0 0 200 200" style="display:block;margin:0 auto 8px">'+slices+'</svg>'
+    +'<div style="padding:0 4px">'+legend+'</div>'
+    +'<div style="font-size:9px;color:#aaa;margin-top:6px;text-align:center">Total operativo: <strong>'+F(total)+'</strong></div>';
+}
 
 function sgTogglePagosDetalle() {
   var p = g('sg-pagos-detalle'), ico = g('sg-pagos-detalle-ico');
@@ -22787,8 +22855,8 @@ function sgRenderPagosDetalle() {
     grupos[cat].total += p.valor || 0;
   });
 
-  var cats = Object.keys(grupos).sort(function(a,b){ return grupos[b].total - grupos[a].total; });
-  var totalG = filtrados.reduce(function(a,p){ return a + (p.valor||0); }, 0);
+  var cats = Object.keys(grupos).filter(function(c){ return c !== '__EXCLUIR__'; }).sort(function(a,b){ return grupos[b].total - grupos[a].total; });
+  var totalG = filtrados.filter(function(p){ return sgCatPago(p.concepto) !== '__EXCLUIR__'; }).reduce(function(a,p){ return a + (p.valor||0); }, 0);
   var chipPago = '';
   if (window.SG_PAGO_SEL) {
     var MNP=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
