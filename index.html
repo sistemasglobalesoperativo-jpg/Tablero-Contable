@@ -1250,6 +1250,20 @@ tbody tr:hover td{background:var(--cyan-light);}
 </div>
 
 
+<!-- MÓDULO ESTADO DE RESULTADOS SG -->
+<div class="card" style="margin-top:12px;margin-bottom:10px;border:1.5px solid rgba(26,107,58,0.25);border-radius:12px;padding:16px 18px">
+  <div style="font-size:10px;font-weight:700;color:#0F6E56;letter-spacing:.06em;margin-bottom:2px">📊 ESTADO DE RESULTADOS</div>
+  <div style="font-size:15px;font-weight:700;color:#54504F;margin-bottom:2px">Sistemas Globales Cartagena SAS · 2026</div>
+  <div style="font-size:11px;color:#888;margin-bottom:12px">Ingresos vs Egresos operacionales · Base gravable · Sin traslados ni impuestos</div>
+  <div id="sg-er-kpis" style="margin-bottom:12px"></div>
+  <button onclick="(function(){var p=document.getElementById('sg-er-detalle');var a=document.getElementById('sg-er-arr');if(p.style.display==='none'){p.style.display='block';a.textContent='▲';}else{p.style.display='none';a.textContent='▼';}})()"
+    style="width:100%;background:#F0FDF4;border:1px solid #6EE7B7;border-radius:8px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;font-family:inherit;text-align:left;">
+    <span style="font-size:12px;font-weight:700;color:#0F6E56;">📋 Ver detalle por categoría de gasto</span>
+    <span id="sg-er-arr" style="font-size:13px;color:#0F6E56;">▼</span>
+  </button>
+  <div id="sg-er-detalle" style="display:none;padding:14px 0 0 0"></div>
+</div>
+
 </div><!-- /h-datos -->
   </div><!-- /home-split-left -->
 
@@ -2540,6 +2554,8 @@ function alzakCargarDatosPrincipal(url, callback) {
       if (typeof renderResumenTablero   === 'function') setTimeout(renderResumenTablero, 150);
       if (typeof renderTablaClientes    === 'function') setTimeout(renderTablaClientes, 170);
       if (typeof renderHomeGastos        === 'function') setTimeout(renderHomeGastos, 180);
+      if (typeof renderPrestamosInline  === 'function') setTimeout(renderPrestamosInline, 200);
+      if (typeof renderSgER             === 'function') setTimeout(renderSgER, 220);
       if (typeof fpRenderLista          === 'function') setTimeout(fpRenderLista, 200);
       if (typeof renderPresupuesto      === 'function') setTimeout(renderPresupuesto, 210);
       if (typeof fcActualizar           === 'function') setTimeout(fcActualizar, 250);
@@ -4684,6 +4700,7 @@ function renderHome() {
   renderResumenTablero();
   if (typeof renderTablaClientes === 'function') setTimeout(renderTablaClientes, 200);
   if (typeof renderPrestamosInline === 'function') setTimeout(renderPrestamosInline, 250);
+  if (typeof renderSgER === 'function') setTimeout(renderSgER, 300);
   if (typeof renderHomeBancosPanel === 'function') setTimeout(renderHomeBancosPanel, 100);
   // Mover pg-conc al panel derecho del split
   setTimeout(function() {
@@ -9712,11 +9729,33 @@ function renderCarteraHome() {
       var ingresoTotal  = brFESG + brSinFactBco + brEfecPuro;
       window._SG_BRUTO_ELEC = brFESG + brSinFactBco;
       window._SG_BRUTO_EFEC = brEfecPuro;
+      window._facFESG        = facFESG;
+      window._facSinFactBco  = facSinFactBanco;
+      window._facEfecPuro    = facEfecPuro;
+      window._facTodosReal   = FACT_REALES;
 
-      return '<div class="ind"><div class="ind-l">🧾 Factura electrónica (FESG)</div><div class="ind-v tb">'+F(brFESG)+'</div><div class="ind-s">'+facFESG.length+' facturas con consecutivo</div></div>'+
-             '<div class="ind"><div class="ind-l" style="color:#0F6E56">🏦 Sin factura · ingresó a banco</div><div class="ind-v" style="color:#0F6E56;font-weight:700">'+F(brSinFactBco)+'</div><div class="ind-s">'+facSinFactBanco.length+' registros sin consecutivo</div></div>'+
-             '<div class="ind"><div class="ind-l" style="color:#CC1818">💵 Efectivo puro</div><div class="ind-v" style="color:#CC1818;font-weight:700">'+F(brEfecPuro)+'</div><div class="ind-s">'+facEfecPuro.length+' registros en efectivo</div></div>'+
-             '<div class="ind" style="border:1.5px solid rgba(204,24,24,.2)"><div class="ind-l" style="color:#1A2B6B">📊 Total base gravable</div><div class="ind-v" style="color:#1A2B6B;font-weight:700">'+F(ingresoTotal)+'</div><div class="ind-s">Sin IVA · '+FACT_REALES.length+' registros reales</div></div>';
+      function _kpiBtn(id, label, val, sub, color, grupo) {
+        var isActive = (window.FACT_GRUPO === grupo);
+        var borderStyle = isActive ? 'border:2px solid '+color+';' : 'border:1.5px solid rgba(0,0,0,.08);';
+        var bgStyle = isActive ? 'background:'+color+'15;' : '';
+        return '<div class="ind" onclick="filtGrupo(\''+grupo+'\')" style="cursor:pointer;'+borderStyle+bgStyle+'transition:all .15s" '
+          +'onmouseover="this.style.boxShadow=\'0 2px 8px rgba(0,0,0,.12)\'" '
+          +'onmouseout="this.style.boxShadow=\'none\'">'
+          +'<div class="ind-l" style="color:'+color+'">'+label+'</div>'
+          +'<div class="ind-v" style="color:'+color+';font-weight:700">'+F(val)+'</div>'
+          +'<div class="ind-s" style="color:'+color+';opacity:.7">'+sub+' · clic para filtrar</div>'
+          +'</div>';
+      }
+
+      return _kpiBtn('fesg',  '🧾 Factura electrónica (FESG)', brFESG,     facFESG.length+' con consecutivo',        '#1A2B6B', 'fesg')
+           + _kpiBtn('banco', '🏦 Sin factura · ingresó a banco', brSinFactBco, facSinFactBanco.length+' sin consecutivo', '#0F6E56', 'banco')
+           + _kpiBtn('efec',  '💵 Efectivo puro',              brEfecPuro,  facEfecPuro.length+' en efectivo',         '#CC1818', 'efectivo')
+           + '<div class="ind" onclick="filtGrupo(\'todas\')" style="cursor:pointer;border:1.5px solid rgba(204,24,24,.2);transition:all .15s" '
+           +'onmouseover="this.style.boxShadow=\'0 2px 8px rgba(0,0,0,.12)\'" onmouseout="this.style.boxShadow=\'none\'">'
+           +'<div class="ind-l" style="color:#1A2B6B">📊 Total base gravable</div>'
+           +'<div class="ind-v" style="color:#1A2B6B;font-weight:700">'+F(ingresoTotal)+'</div>'
+           +'<div class="ind-s" style="color:#1A2B6B;opacity:.7">Sin IVA · '+FACT_REALES.length+' reales · ver todo</div>'
+           +'</div>';
     })()+
     '<div class="ind"><div class="ind-l" style="color:#0F6E56">IVA facturado 19%</div><div class="ind-v" style="color:#0F6E56;font-weight:700">+'+F(dIVA)+'</div><div class="ind-s">IVA generado</div></div>'+
     /* SG: sin retefuente — régimen simple */
@@ -17190,6 +17229,119 @@ function tabPrestamos() {
   setTimeout(renderPrestamos, 80);
 }
 
+// ── ESTADO DE RESULTADOS SG ───────────────────────────────────────────────────
+var SG_ER_CATS_ORDEN = [
+  'Nómina y Seguridad Social',
+  'Honorarios',
+  'Comisiones de Ventas',
+  'Servicios Públicos',
+  'Arriendos',
+  'Compra de Equipos e Insumos',
+  'Mantenimiento y Reparaciones',
+  'Servicios Generales',
+  'Otros Gastos'
+];
+
+function renderSgER() {
+  var elKpi = document.getElementById('sg-er-kpis');
+  var elDet = document.getElementById('sg-er-detalle');
+  if (!elKpi) return;
+
+  var pagos = window.SG_PAGOS || [];
+  if (!pagos.length) {
+    elKpi.innerHTML = '<div style="color:#888;font-size:12px;padding:8px">Sincroniza el tablero para cargar los egresos.</div>';
+    return;
+  }
+
+  // Agrupar por categoría usando sgCatPago
+  var totCat = {}, itemsCat = {}, totalExcluido = 0, totalImptos = 0;
+  SG_ER_CATS_ORDEN.forEach(function(c){ totCat[c]=0; itemsCat[c]=[]; });
+
+  pagos.forEach(function(r) {
+    var cat = sgCatPago(r.concepto||'');
+    var val = parseFloat(r.valor||0);
+    if (cat === '__EXCLUIR__') { totalExcluido += val; return; }
+    if (cat === 'Impuestos y Cargas Fiscales') { totalImptos += val; return; }
+    totCat[cat] = (totCat[cat]||0) + val;
+    if (!itemsCat[cat]) itemsCat[cat] = [];
+    itemsCat[cat].push(r);
+  });
+
+  // Ingresos base gravable real
+  var ingresos = window._FACT_R_GLOBAL ?
+    window._FACT_R_GLOBAL.reduce(function(a,f){ return a+(f.bruto||0); }, 0) : 0;
+
+  var totalGastos = SG_ER_CATS_ORDEN.reduce(function(a,c){ return a+(totCat[c]||0); }, 0);
+  var utilOper = ingresos - totalGastos;
+  var utilNeta = utilOper - totalImptos;
+  var colUO = utilOper >= 0 ? '#0F6E56' : '#CC1818';
+  var colUN = utilNeta >= 0 ? '#0F6E56' : '#CC1818';
+  var nOperativos = pagos.filter(function(r){ var c=sgCatPago(r.concepto); return c!=='__EXCLUIR__'&&c!=='Impuestos y Cargas Fiscales'; }).length;
+
+  elKpi.innerHTML =
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:12px">'
+    +'<div style="background:#F0FDF4;border-radius:8px;padding:10px 12px">'
+    +'<div style="font-size:9px;font-weight:700;color:#0F6E56;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">(+) Ingresos</div>'
+    +'<div style="font-size:17px;font-weight:700;color:#0F6E56">'+F(ingresos)+'</div>'
+    +'<div style="font-size:9px;color:#0F6E56;opacity:.7">Base gravable real</div></div>'
+
+    +'<div style="background:#FEF2F2;border-radius:8px;padding:10px 12px">'
+    +'<div style="font-size:9px;font-weight:700;color:#CC1818;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">(-) Gastos operac.</div>'
+    +'<div style="font-size:17px;font-weight:700;color:#CC1818">'+F(totalGastos)+'</div>'
+    +'<div style="font-size:9px;color:#CC1818;opacity:.7">'+nOperativos+' egresos · excluidos: '+F(totalExcluido)+'</div></div>'
+
+    +'<div style="background:'+(utilOper>=0?'#F0FDF4':'#FEF2F2')+';border-radius:8px;padding:10px 12px;border:2px solid '+colUO+'">'
+    +'<div style="font-size:9px;font-weight:700;color:'+colUO+';text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">(=) Utilidad operac.</div>'
+    +'<div style="font-size:17px;font-weight:700;color:'+colUO+'">'+F(utilOper)+' '+(utilOper>=0?'🟢':'🔴')+'</div>'
+    +'<div style="font-size:9px;color:'+colUO+';opacity:.7">'+(ingresos?Math.round(utilOper/ingresos*100):0)+'% margen</div></div>'
+
+    +'<div style="background:'+(utilNeta>=0?'#EBF3FB':'#FEF2F2')+';border-radius:8px;padding:10px 12px;border:2px solid '+colUN+'">'
+    +'<div style="font-size:9px;font-weight:700;color:'+colUN+';text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">(=) Utilidad neta</div>'
+    +'<div style="font-size:17px;font-weight:700;color:'+colUN+'">'+F(utilNeta)+' '+(utilNeta>=0?'🟢':'🔴')+'</div>'
+    +'<div style="font-size:9px;color:'+colUN+';opacity:.7">Imptos: '+F(totalImptos)+'</div></div>'
+    +'</div>';
+
+  if (!elDet) return;
+  var html = '<table style="width:100%;border-collapse:collapse;font-size:11px;font-family:Montserrat,Arial,sans-serif">';
+  html += '<thead><tr style="background:#F8F7F5">'
+    +'<th style="padding:7px 12px;text-align:left;font-size:10px;color:#888;font-weight:700;border-bottom:1px solid #e8e5e0">Categoría</th>'
+    +'<th style="padding:7px 12px;text-align:right;font-size:10px;color:#888;font-weight:700;border-bottom:1px solid #e8e5e0">Total egresado</th>'
+    +'<th style="padding:7px 12px;text-align:right;font-size:10px;color:#888;font-weight:700;border-bottom:1px solid #e8e5e0">% gasto</th>'
+    +'</tr></thead><tbody>';
+
+  SG_ER_CATS_ORDEN.forEach(function(cat, i) {
+    var v = totCat[cat]||0;
+    if (!v) return;
+    var pct = totalGastos ? Math.round(v/totalGastos*100) : 0;
+    html += '<tr style="background:'+(i%2===0?'#fafafa':'#fff')+';border-bottom:1px solid #f0eeec">'
+      +'<td style="padding:7px 12px;color:#54504F;font-weight:500">'+cat+'</td>'
+      +'<td style="padding:7px 12px;text-align:right;color:#CC1818;font-weight:700">'+F(v)+'</td>'
+      +'<td style="padding:7px 12px;text-align:right;color:#888">'+pct+'%</td></tr>';
+  });
+
+  html += '<tr style="background:#1A2B6B"><td colspan="3" style="padding:6px 12px;font-size:10px;font-weight:700;color:#fff;letter-spacing:.05em">UTILIDAD OPERACIONAL</td></tr>';
+  html += '<tr style="background:'+(utilOper>=0?'#F0FDF4':'#FEF2F2')+'">'
+    +'<td style="padding:8px 12px;font-weight:700;color:'+colUO+'">Ingresos − Gastos operacionales</td>'
+    +'<td style="padding:8px 12px;text-align:right;font-weight:700;color:'+colUO+'">'+F(utilOper)+'</td>'
+    +'<td style="padding:8px 12px;text-align:right;color:'+colUO+'">'+(ingresos?Math.round(utilOper/ingresos*100):0)+'%</td></tr>';
+
+  if (totalImptos) {
+    html += '<tr style="background:#fafafa;border-bottom:1px solid #f0eeec">'
+      +'<td style="padding:7px 12px;color:#888">(−) Impuestos y cargas fiscales</td>'
+      +'<td style="padding:7px 12px;text-align:right;color:#888">'+F(totalImptos)+'</td>'
+      +'<td></td></tr>';
+  }
+
+  html += '<tr style="background:'+(utilNeta>=0?'#EBF3FB':'#FEF2F2')+'">'
+    +'<td style="padding:8px 12px;font-weight:700;color:'+colUN+'">UTILIDAD NETA</td>'
+    +'<td style="padding:8px 12px;text-align:right;font-weight:700;font-size:13px;color:'+colUN+'">'+F(utilNeta)+'</td>'
+    +'<td style="padding:8px 12px;text-align:right;color:'+colUN+'">'+(ingresos?Math.round(utilNeta/ingresos*100):0)+'%</td></tr>';
+
+  html += '</tbody></table>';
+  elDet.innerHTML = html;
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 // ─── MÓDULO PRÉSTAMOS SR. CAMILO ─────────────────────────────────────────────
 var PREST_DATA = [];
 var PREST_SHEET_ID = '1cX4w_C1sO6n1U0M_MH1nRNcCjAI3TqAlY2i7c_JcFis';
@@ -22387,18 +22539,45 @@ function sgClickPagoChart(mes, anio, fuente) {
 // ══ SG: DETALLE DE PAGOS POR CATEGORÍA (informe Detalle_Pagos_SG_2026) ══
 function sgCatPago(concepto) {
   var c = String(concepto||'').toUpperCase();
-  if (/COMPUWORKING/.test(c))                                                        return 'ACUERDO COMPUWORKING';
-  if (/BIA|AFINIA|ELECTRICIDAD|ENERGIA ELECTRICA/.test(c))                           return 'ENERG\u00cdA (BIA/AFINIA)';
-  if (/AGUAS DE CARTAGENA|AGUA CARTAGENA/.test(c))                                   return 'AGUA (AGUAS DE CARTAGENA)';
-  if (/ARRIENDO|ALQUILER/.test(c))                                                   return 'ARRIENDOS';
-  if (/COMISION/.test(c))                                                            return 'COMISIONES DE VENTAS';
-  if (/CAMARA/.test(c))                                                              return 'C\u00c1MARAS';
-  if (/GPS|SIM CARD|PLAN DE DATOS|CELULAR|CELULA|DISTRACKER|DISTRAACKER|TIGO|CLARO|INTERNET|DOMINIO/.test(c)) return 'GPS / DATOS / COMUNICACIONES';
-  if (/QUINCENA|SEGURIDAD SOCIAL|DIAS DE TRABAJO|DIAS SR|ARL|DOTACION|JEKNIFER|HONORARIO|NOGUERA|BONO MES|BONO MENSUAL/.test(c)) return 'N\u00d3MINA Y HONORARIOS';
-  if (/LIMPIEZA|LIMPEZA|LIMPIENZA|ESMERALDA|ASEO|CAFETERIA|GASEOSA|CAFE Y AZUCAR/.test(c)) return 'LIMPIEZA / ASEO';
-  if (/COMBUSTIBLE|GASOLINA|TRANSPORTE|PARQUEADERO|PARQUEADER|PARQUEO|PASAJES|FLETE/.test(c)) return 'TRANSPORTE / COMBUSTIBLE';
-  if (/MANO DE OBRA|FUENTE|BANS|CAUCHO|LAVADO|ARREGLO|SOLDAD|PINTURA|ESTUCO|MATERIAL|GATO ZORRA|ANDAMIO|DESMONTAJE|INSTALAC|LLANTA|BATERIA|TECNOMECANIC|HERRAMIENTA|SWITCH|CABLE|DISCO DURO|TELEVISOR|COMPUTADOR/.test(c)) return 'MANTENIMIENTO / COMPRAS / EQUIPO';
-  return 'OTROS GASTOS';
+
+  // ── EXCLUIR del ER (no son gastos operacionales) ──────────────
+  if (/TRASLADO.*FOND|FONDOS COMUNES|TRASLADO CAJA MENOR|TRANSFERENCIA.*CAJA MENOR|TRASNFERENCIA CAJA MENOR|CUENTA BOLD SISTEMAS GLOBALES/.test(c)) return '__EXCLUIR__';
+  if (/DEVOLUCION GPS|DEVOLUCIÓN.*GPS|DEVOLUCION.*MITAD GPS/.test(c)) return '__EXCLUIR__';
+  if (/UTILIDAD MES.*PANT|UTILIDAD.*BAZURTO|ABONO SR\.? JIMMY BAZURTO/.test(c)) return '__EXCLUIR__';
+  if (/ABONO.*OCTOCAAR|TRANSFERENCIA ABONO FACTURA 900|ABONO DEUDA OCTOCAAR|ABONO PRESTAMO NELSON RAFAEL|ABONO.*PRESTAMO.*SR CAMILO|ABONO FACTURA FO 879|PRESTAMOS SR CAMILO/.test(c)) return '__EXCLUIR__';
+
+  // ── IMPUESTOS (van debajo de utilidad operacional) ────────────
+  if (/DIAN|BIMESTRE DIAN|\bICA\b|PREDIAL|IMPUESTO.*INDUSTR|SALDO IVA|IVA.*6BIM|COMPROBANTE.*IVA|ABONO IVA|RETENCION EN LA FUENTE DIC|DEBITO POR EMBARGO|EMBARGO/.test(c)) return 'Impuestos y Cargas Fiscales';
+
+  // ── NÓMINA Y SEGURIDAD SOCIAL ─────────────────────────────────
+  if (/QUINCENA|SEGURIDAD SOCIAL|APORTES EN LINEA|ARL\b|DOTACION|CESANTIA|LIQUIDACION|BONO MES|BONO MENSUAL|DIAS DE TRABAJO|DIAS SR\.|PRIMA\b|ENTREGADO A JEKNIFER/.test(c)) return 'Nómina y Seguridad Social';
+
+  // ── HONORARIOS (personas naturales) ──────────────────────────
+  if (/HONORARIO|HON\b|CUENTA DE COBRO|CUENTA COBRO|HON AGOSTO|HON JANNINA|HON NRAZ|RESTANTE HON|PAGO.*NRAZ|PAGO.*PAULA PINZON|PAGO.*JANNINA|PAGO.*GABRIELA|PAGO.*MARIA CAMILA|PAGO.*ADRIANA TORRES|RECLUTAMIENTO|RICHARD.*FACTURA|FACTURA.*RICHARD|COPY HOUSE|ELECTROMARCO|PROSEGUR|GINO SOLDAD|PHARMASER.*GABY|PHARMASER.*JANNINA|PHARMASER.*GABRI|GABY.*PHARMASER|JANNINA.*PHARMASER|GABBY HONOR|PHARMASER JANNINA|PHARMASER GABY|PAGOS PHARMASER/.test(c)) return 'Honorarios';
+
+  // ── COMISIONES DE VENTAS ──────────────────────────────────────
+  if (/COMISION|COMISIÓN/.test(c)) return 'Comisiones de Ventas';
+
+  // ── SERVICIOS PÚBLICOS (energía + agua + comunicaciones) ──────
+  if (/BIA\b|AFINIA|ELECTRICIDAD|ENERGIA ELECTRICA|FACTURA BIA|PAGO.*BIA|PAGO.*ENERGY|SURTIGAS|ACUACAR|AGUAS DE CARTAGENA|AGUA CARTAGENA|PAGO RECIBO.*AFINIA|PAGO RECIBO.*ACUACAR|PAGO RECIBO.*SURTIGAS/.test(c)) return 'Servicios Públicos';
+  if (/INTERNET|CLARO|TIGO|PLAN DE DATOS|SIM CARD|CELULAR|CELULA OFICINA|DOMINIO|PAGO CLARO|DISTRACKER|DISTRAACKER|RECARGA SIM/.test(c)) return 'Servicios Públicos';
+
+  // ── ARRIENDOS ─────────────────────────────────────────────────
+  if (/ARRIENDO|ALQUILER|COMPUWORKING|ACUERDO DE PAG.*PANT|ACUERDO.*PAGO.*PANT|ABONO COMPUWORKING/.test(c)) return 'Arriendos';
+
+  // ── COMPRA DE EQUIPOS E INSUMOS ───────────────────────────────
+  if (/COMPRA\b|CAMARA|CÁMARA|ROUTER|SWITCH|CABLE|DISCO DURO|VENTILADOR|TELEVISOR|FUENTE PARA PANTALLA|FUENTES? GABRIELITO|GATO ZORRA|CAUCHO|KIT DE CARRETERA|BALBULA|SIIGO|ANUALIDAD SIIGO|LOGGRO|ELECTRICOS DEL RUIZ|PAGO FACTURA.*RUIZ|AIRE ACONDICIONADO|COMPRA FERNANDO VELEZ/.test(c)) return 'Compra de Equipos e Insumos';
+
+  // ── MANTENIMIENTO Y REPARACIONES ─────────────────────────────
+  if (/MANO DE OBRA|MANTENI|MANTENIMIENTO|REPARAC|ARREGLO|INSTALAC|SOLDAD|PINTURA|ESTUCO|ANDAMIO|DESMONTAJE|ROTURA PISO|LLANTA|BATERIA|TECNOMECANIC|HERRAMIENTA|PAGO CAMARA CRESPO|JORGE G\b|PAGO FACTURA JGS|EDISON CANEDO/.test(c)) return 'Mantenimiento y Reparaciones';
+
+  // ── SERVICIOS GENERALES ───────────────────────────────────────
+  if (/LIMPIEZA|LIMPEZA|LIMPIENZA|ESMERALDA|ASEO|CAFETERIA|GASEOSA|CAFE Y AZUCAR|PRODUCTOS DE LIMPIEZA|AGUA REUNION|REFRIGERIO|PARQUEADERO|TRANSPORTE|COMBUSTIBLE|GASOLINA|\bMOTO\b|PASAJES|FLETE/.test(c)) return 'Servicios Generales';
+
+  // ── CAJA MENOR interna ────────────────────────────────────────
+  if (/CAJA MENOR\b/.test(c)) return '__EXCLUIR__';
+
+  return 'Otros Gastos';
 }
 
 var SG_PAGOS_CAT_ABIERTAS = {};
