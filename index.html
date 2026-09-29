@@ -12956,115 +12956,148 @@ function exportarPDFEstadoResultados() {
 }
 
 function renderEstadoResultados() {
+  // ── SG: Estado de Resultados completamente reescrito ──────────────
+  var erBody  = g('er-body');
+  var erKpis  = g('er-kpis');
+  var erChart = g('er-chart');
 
-  var meses=getMeses();
+  var pagos    = window.SG_PAGOS || [];
+  var facturas = window._FACT_R_GLOBAL || FACTURAS.filter(function(f){ return sgEsReal(f); });
 
-  // Si no hay facturas ni FR_DATA cargados, mostrar estado vacío y salir
-  var hayFacturas = FACTURAS.length > 0;
-  var hayFR       = typeof FR_DATA !== 'undefined' && FR_DATA.length > 0;
-  if (!hayFacturas && !hayFR) {
-    var kpEl2=g('er-kpis'); if(kpEl2) kpEl2.innerHTML='';
-    var erChart=g('er-chart');
-    if(erChart) erChart.innerHTML='<div style="text-align:center;padding:32px 20px;">'
-      +'<div style="font-size:28px;margin-bottom:10px;">📊</div>'
-      +'<div style="font-size:13px;font-weight:600;color:#888;margin-bottom:6px;">Sin datos para el análisis financiero</div>'
-      +'<div style="font-size:11px;color:#aaa;">Carga las <strong>facturas emitidas</strong> (ventas) y las <strong>facturas radicadas</strong> (costos)<br>para ver el Estado de Resultados automáticamente</div>'
-      +'</div>';
+  if (!facturas.length && !pagos.length) {
+    if (erBody) erBody.innerHTML = '<div style="text-align:center;padding:24px;color:#888">Sincroniza el tablero para cargar datos.</div>';
     return;
   }
 
-  if(!meses.length) return;
+  // ── INGRESOS: 3 grupos desplegables ───────────────────────────────
+  var _BRC = {'BANCOLOMBIA':1,'SUDAMERIS':1,'DAVIVIENDA':1,'BOLD':1,'BANCOLOMBIA / EFECTIVO':1,'SUDAMERIS / EFECTIVO':1};
+  var grpFESG  = facturas.filter(function(f){ return String(f.num||'').toUpperCase().indexOf('FESG')===0; });
+  var grpBanco = facturas.filter(function(f){ var n=String(f.num||'').toUpperCase(); var b=String(f.banco||'').toUpperCase(); return (n===''||n==='NAN'||n==='EFECTIVO')&&_BRC[b]; });
+  var grpEfec  = facturas.filter(function(f){ var n=String(f.num||'').toUpperCase(); var b=String(f.banco||'').toUpperCase(); return (n===''||n==='NAN'||n==='EFECTIVO')&&!_BRC[b]; });
 
-  var pills=g('er-fil-pills');
+  var totFESG  = grpFESG.reduce(function(a,f){return a+(f.bruto||0);},0);
+  var totBanco = grpBanco.reduce(function(a,f){return a+(f.bruto||0);},0);
+  var totEfec  = grpEfec.reduce(function(a,f){return a+(f.bruto||0);},0);
+  var totalIng = totFESG + totBanco + totEfec;
 
-  if(pills){
+  // ── COSTOS: categorías sgCatPago ──────────────────────────────────
+  var SG_CATS = [
+    'Nómina y Seguridad Social','Honorarios','Comisiones de Ventas',
+    'Servicios Públicos','Arriendos','Compra de Equipos e Insumos',
+    'Mantenimiento y Reparaciones','Servicios Generales','Otros Gastos'
+  ];
+  var totCat = {}, itemsCat = {}, totalExcl = 0, totalImptos = 0;
+  SG_CATS.forEach(function(c){ totCat[c]=0; itemsCat[c]=[]; });
 
-    var ph='';
-    for(var i=0;i<meses.length;i++)
-      ph+='<button class="pill'+(ER_MES_SEL===meses[i]?' on':'')+'" onclick="ER_MES_SEL=\''+meses[i]+'\';renderEstadoResultados()" style="font-size:11px">'+meses[i].replace(/ \d{4}/,'')+'</button>';
-    ph+='<button class="pill'+(ER_MES_SEL===''?' on':'')+'" onclick="ER_MES_SEL=\'\';renderEstadoResultados()" style="font-size:11px">Acumulado</button>';
+  pagos.forEach(function(r){
+    var cat = sgCatPago(r.concepto||'');
+    var val = parseFloat(r.valor||0);
+    if (cat==='__EXCLUIR__') { totalExcl+=val; return; }
+    if (cat==='Impuestos y Cargas Fiscales') { totalImptos+=val; return; }
+    totCat[cat] = (totCat[cat]||0)+val;
+    if (!itemsCat[cat]) itemsCat[cat]=[];
+    itemsCat[cat].push(r);
+  });
 
-    pills.innerHTML=ph;
+  var totalGastos = SG_CATS.reduce(function(a,c){return a+(totCat[c]||0);},0);
+  var utilOper    = totalIng - totalGastos;
+  var utilNeta    = utilOper - totalImptos;
+  var colUO = utilOper>=0?'#0F6E56':'#CC1818';
+  var colUN = utilNeta>=0?'#0F6E56':'#CC1818';
 
+  // ── KPIs ──────────────────────────────────────────────────────────
+  if (erKpis) erKpis.innerHTML =
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:12px">'
+    +'<div style="background:#F0FDF4;border-radius:8px;padding:10px 12px">'
+    +'<div style="font-size:9px;font-weight:700;color:#0F6E56;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">(+) Ingresos</div>'
+    +'<div style="font-size:17px;font-weight:700;color:#0F6E56">'+F(totalIng)+'</div>'
+    +'<div style="font-size:9px;color:#0F6E56;opacity:.7">'+facturas.length+' registros</div></div>'
+    +'<div style="background:#FEF2F2;border-radius:8px;padding:10px 12px">'
+    +'<div style="font-size:9px;font-weight:700;color:#CC1818;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">(-) Gastos operac.</div>'
+    +'<div style="font-size:17px;font-weight:700;color:#CC1818">'+F(totalGastos)+'</div>'
+    +'<div style="font-size:9px;color:#CC1818;opacity:.7">Excluidos: '+F(totalExcl)+'</div></div>'
+    +'<div style="background:'+(utilOper>=0?'#F0FDF4':'#FEF2F2')+';border-radius:8px;padding:10px 12px;border:2px solid '+colUO+'">'
+    +'<div style="font-size:9px;font-weight:700;color:'+colUO+';text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">(=) Util. operac.</div>'
+    +'<div style="font-size:17px;font-weight:700;color:'+colUO+'">'+F(utilOper)+' '+(utilOper>=0?'🟢':'🔴')+'</div>'
+    +'<div style="font-size:9px;color:'+colUO+';opacity:.7">'+(totalIng?Math.round(utilOper/totalIng*100):0)+'% margen</div></div>'
+    +'<div style="background:'+(utilNeta>=0?'#EBF3FB':'#FEF2F2')+';border-radius:8px;padding:10px 12px;border:2px solid '+colUN+'">'
+    +'<div style="font-size:9px;font-weight:700;color:'+colUN+';text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">(=) Util. neta</div>'
+    +'<div style="font-size:17px;font-weight:700;color:'+colUN+'">'+F(utilNeta)+' '+(utilNeta>=0?'🟢':'🔴')+'</div>'
+    +'<div style="font-size:9px;color:'+colUN+';opacity:.7">Imptos: '+F(totalImptos)+'</div></div>'
+    +'</div>';
+
+  // ── TABLA DETALLADA ───────────────────────────────────────────────
+  function secHeader(label, color) {
+    return '<tr style="background:'+color+'"><td colspan="2" style="padding:7px 14px;font-size:11px;font-weight:700;color:#fff;letter-spacing:.05em">'+label+'</td></tr>';
+  }
+  function detRow(label, val, sub, color, indent) {
+    var bg = indent ? '#fafafa' : '#fff';
+    return '<tr style="background:'+bg+';border-bottom:1px solid #f0eeec;cursor:pointer" onclick="var nx=this.nextElementSibling;if(nx)nx.style.display=nx.style.display===\'none\'?\'table-row\':\'none\'">'
+      +'<td style="padding:'+(indent?'5px 14px 5px 28px':'7px 14px')+';color:'+(color||'#54504F')+';font-weight:'+(indent?'400':'600')+'">'+label+(sub?' <span style="font-size:9px;color:#aaa;font-weight:400">'+sub+'</span>':'')+'</td>'
+      +'<td style="padding:'+(indent?'5px 14px':'7px 14px')+';text-align:right;font-weight:'+(indent?'400':'700')+';color:'+(color||'#CC1818')+'">'+F(val)+'</td>'
+      +'</tr>';
   }
 
-  var kpEl=g('er-kpis');
-
-  if(kpEl){
-
-    var ingT,gasT,utilT,per,ingProyT=0,gasProyT=0;
-
-    if(ER_MES_SEL){
-
-      var md=calcMesData(ER_MES_SEL);ingT=md.ing;gasT=md.gas;utilT=md.util;per=ER_MES_SEL;
-      ingProyT=md.ingProy||0; gasProyT=md.gasProy||0;
-
-    } else {
-
-      var anioFil2 = (document.getElementById('er-fil-anio')||{value:'2026'}).value || '2026';
-      var mesesFil = getMeses(); // ya filtrados por año
-
-      ingT = FACTURAS.filter(function(f){
-        // Usar fecha_raw (dd/MM/yyyy) para parseo correcto
-        var rawF = f.fecha_raw || f.fecha || '';
-        var dp = fFechaPartes(rawF);
-        return dp[0] && dp[1] && (!anioFil2 || String(dp[0])===String(anioFil2));
-      }).reduce(function(a,f){return a+(f.bruto||0);},0);
-
-      if (typeof FR_DATA !== 'undefined' && FR_DATA.length) {
-        gasT = FR_DATA.filter(function(r){
-          var fp=(r['Fecha']||'').split('/');
-          if (fp.length<3) return false;
-          if (anioFil2 && (fp[2]||'').substring(0,4)!==anioFil2) return false;
-          if (typeof frEsProyectado === 'function' && frEsProyectado(r)) return false;
-          return frEsGastoOpPL(r); // Excluir DIAN, préstamos, traslados
-        }).reduce(function(a,r){
-          var v = r['Total (COP)'] || r['Total(COP)'] || r['Total'] || 0;
-          if (typeof v === 'string') v = v.replace(/[^0-9.]/g,'');
-          return a + (parseFloat(v)||0);
-        },0);
-      } else {
-        gasT = GASTOS_DATA.filter(function(r){
-          return esGastoOpPL(r) && (!anioFil2 || (r['Mes']||'').indexOf(anioFil2)>=0);
-        }).reduce(function(a,r){return a+parseFloat(r['Total_COP']||0);},0);
-      }
-
-      utilT=ingT-gasT; per='Acumulado '+anioFil2;
-
-      // Proyecciones acumuladas
-      var mesesAll = getMeses();
-      var dataAll = mesesAll.map(calcMesData);
-      for(var _da=0;_da<dataAll.length;_da++){
-        ingProyT += (dataAll[_da].ingProy||0);
-        gasProyT += (dataAll[_da].gasProy||0);
-      }
-
-    }
-
-    var mg=ingT?Math.round(utilT/ingT*100):0;
-
-    kpEl.innerHTML='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:8px">'
-      +'<div class="met"><div class="met-l">Ingresos · '+per+'</div><div class="met-v tb">'+F(ingT)+'</div><div class="met-s">Facturas emitidas</div></div>'
-      +'<div class="met"><div class="met-l">Costos · '+per+'</div><div class="met-v tr">'+F(gasT)+'</div><div class="met-s">'+(typeof FR_DATA!=='undefined'&&FR_DATA.length?'Facturas radicadas':'Egresos op.')+'</div></div>'
-      +'<div class="met"><div class="met-l">Utilidad · Margen '+mg+'%</div><div class="met-v '+(utilT>=0?'tg':'tr')+'">'+F(utilT)+'</div><div class="met-s">'+(utilT>=0?'Positiva ✅':'⚠️ Negativa')+'</div></div>'
-      +'</div>'
-      + ((ingProyT>0||gasProyT>0) ?
-        '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:8px">'
-        +'<div class="met" style="border-left:3px solid #7C3AED;"><div class="met-l" style="color:#7C3AED;">📈 Ing. proyectados</div><div class="met-v" style="color:#7C3AED;">'+F(ingProyT)+'</div><div class="met-s">Fact. programada</div></div>'
-        +'<div class="met" style="border-left:3px solid #7C3AED;"><div class="met-l" style="color:#7C3AED;">📉 Gastos proyectados</div><div class="met-v" style="color:#7C3AED;">'+F(gasProyT)+'</div><div class="met-s">Gastos prog. equipo</div></div>'
-        +'<div class="met" style="border-left:3px solid #7C3AED;"><div class="met-l" style="color:#7C3AED;">🔮 Escenario total</div><div class="met-v" style="color:'+(((ingT+ingProyT)-(gasT+gasProyT))>=0?'#1D6F42':'#A32D2D')+';">'+F((ingT+ingProyT)-(gasT+gasProyT))+'</div><div class="met-s">Real + Proyectado</div></div>'
-        +'</div>'
-        : '');
-
+  // Función para hacer filas de detalle desplegables
+  function ingGrpRow(label, val, items, color, icon) {
+    if (!val) return '';
+    var id = 'erg' + Math.round(Math.random()*999999);
+    var rows = items.slice(0,50).map(function(f,i){
+      return '<tr style="background:'+(i%2===0?'#f9fff9':'#fff')+'"><td style="padding:4px 28px;color:#54504F;font-size:10px">'+(f.num||f.cliente||'—')+'</td><td style="padding:4px 14px;text-align:right;color:#0F6E56;font-size:10px">'+F(f.bruto||0)+'</td></tr>';
+    }).join('');
+    if(items.length>50) rows += '<tr><td colspan="2" style="padding:4px 28px;color:#aaa;font-size:9px">...y '+(items.length-50)+' más</td></tr>';
+    return '<tr style="background:#F8FFF8;border-bottom:1px solid #e8f5e8;cursor:pointer" onclick="sgToggleER(\''+id+'\')"><td style="padding:7px 14px;color:'+color+';font-weight:600">'+icon+' '+label+' <span style="font-size:9px;color:#aaa;font-weight:400">'+items.length+' registros · clic para ver</span></td><td style="padding:7px 14px;text-align:right;font-weight:700;color:'+color+'">'+F(val)+'</td></tr>'
+      + '<tr id="'+id+'" style="display:none"><td colspan="2" style="padding:0"><table style="width:100%;border-collapse:collapse">'+rows+'</table></td></tr>';
+  }
+  function gasGrpRow(label, val, items, color) {
+    if (!val) return '';
+    var id = 'erg' + Math.round(Math.random()*999999);
+    var pct = totalGastos ? Math.round(val/totalGastos*100) : 0;
+    var rows = items.slice(0,50).map(function(r,i){
+      return '<tr style="background:'+(i%2===0?'#fff9f9':'#fff')+'"><td style="padding:4px 28px;color:#54504F;font-size:10px">'+String(r.concepto||'').substring(0,65)+'</td><td style="padding:4px 14px;text-align:right;color:#CC1818;font-size:10px">'+F(r.valor||0)+'</td></tr>';
+    }).join('');
+    if(items.length>50) rows += '<tr><td colspan="2" style="padding:4px 28px;color:#aaa;font-size:9px">...y '+(items.length-50)+' más</td></tr>';
+    return '<tr style="background:#fff9f9;border-bottom:1px solid #fee;cursor:pointer" onclick="sgToggleER(\''+id+'\')"><td style="padding:7px 14px;color:'+(color||'#CC1818')+';font-weight:600">'+label+' <span style="font-size:9px;color:#aaa;font-weight:400">'+pct+'% · '+items.length+' egresos · clic</span></td><td style="padding:7px 14px;text-align:right;font-weight:700;color:'+(color||'#CC1818')+'">'+F(val)+'</td></tr>'
+      + '<tr id="'+id+'" style="display:none"><td colspan="2" style="padding:0"><table style="width:100%;border-collapse:collapse">'+rows+'</table></td></tr>';
   }
 
-  renderErGrafico();
+  var html = '<table style="width:100%;border-collapse:collapse;font-size:11px;font-family:Montserrat,Arial,sans-serif">'
+    +'<thead><tr style="background:#2D2D2D"><th style="padding:8px 14px;text-align:left;color:#fff;font-size:10px;font-weight:700">CONCEPTO</th><th style="padding:8px 14px;text-align:right;color:#fff;font-size:10px;font-weight:700">VALOR BASE GRAVABLE</th></tr></thead><tbody>';
 
-  var body=g('er-body');
+  // INGRESOS
+  html += secHeader('(+) INGRESOS OPERACIONALES · '+F(totalIng), '#1A2B6B');
+  html += ingGrpRow('Factura electrónica (FESG)', totFESG, grpFESG, '#1A2B6B', '🧾');
+  html += ingGrpRow('Sin factura · ingresó a banco', totBanco, grpBanco, '#0F6E56', '🏦');
+  html += ingGrpRow('Efectivo puro', totEfec, grpEfec, '#CC1818', '💵');
 
-  if(body&&body.style.display!=='none') renderErDetalle();
+  // COSTOS
+  html += secHeader('(-) GASTOS OPERACIONALES · '+F(totalGastos), '#7C2D12');
+  SG_CATS.forEach(function(cat){
+    html += gasGrpRow(cat, totCat[cat]||0, itemsCat[cat]||[], '#CC1818');
+  });
 
+  // RESULTADOS
+  html += '<tr style="background:'+(utilOper>=0?'#1A2B6B':'#7C2D12')+'">'
+    +'<td style="padding:9px 14px;font-weight:700;color:#fff;font-size:12px">(=) UTILIDAD OPERACIONAL</td>'
+    +'<td style="padding:9px 14px;text-align:right;font-weight:700;color:#FFD700;font-size:13px">'+F(utilOper)+' '+(utilOper>=0?'🟢':'🔴')+'</td></tr>';
+
+  if (totalImptos) {
+    html += '<tr style="background:#fafafa;border-bottom:1px solid #f0eeec"><td style="padding:7px 14px;color:#888">(−) Impuestos y cargas fiscales</td><td style="padding:7px 14px;text-align:right;color:#888">'+F(totalImptos)+'</td></tr>';
+  }
+  if (totalExcl) {
+    html += '<tr style="background:#fafafa"><td style="padding:5px 14px;font-size:10px;color:#aaa">ℹ️ Excluidos del ER (traslados, préstamos, devoluciones)</td><td style="padding:5px 14px;text-align:right;font-size:10px;color:#aaa">'+F(totalExcl)+'</td></tr>';
+  }
+
+  html += '<tr style="background:'+(utilNeta>=0?'#0F6E56':'#CC1818')+'">'
+    +'<td style="padding:10px 14px;font-weight:700;color:#fff;font-size:13px">(=) UTILIDAD NETA</td>'
+    +'<td style="padding:10px 14px;text-align:right;font-weight:700;color:#FFD700;font-size:14px">'+F(utilNeta)+' '+(utilNeta>=0?'🟢':'🔴')+'</td></tr>';
+
+  html += '</tbody></table>';
+
+  if (erBody) erBody.innerHTML = html;
+  if (erChart) erChart.innerHTML = ''; // limpia el chart viejo
 }
+
 
 function renderCarteraKPI() { renderCarteraHome(); }
 
