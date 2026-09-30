@@ -13024,8 +13024,8 @@ function renderEstadoResultados() {
   // ── Calcular gastos por mes y categoría ───────────────────────────
   var SG_CATS = ['Nómina y Seguridad Social','Honorarios','Comisiones de Ventas',
     'Servicios Públicos','Gasolina','Arriendos','Compra de Equipos e Insumos',
-    'Mantenimiento y Reparaciones','Servicios Generales',
-    'Plataformas tecnológicas','Viáticos','Otros Gastos'];
+    'Mantenimiento y Reparaciones','Servicios Generales','Otros Gastos',
+    'Plataformas tecnológicas','Viáticos'];
 
   function getMesNum(r) {
     var d=String(r.fecha||'');
@@ -17398,9 +17398,9 @@ var SG_ER_CATS_ORDEN = [
   'Compra de Equipos e Insumos',
   'Mantenimiento y Reparaciones',
   'Servicios Generales',
+  'Otros Gastos',
   'Plataformas tecnológicas',
-  'Viáticos',
-  'Otros Gastos'
+  'Viáticos'
 ];
 
 function renderSgER() {
@@ -22333,8 +22333,8 @@ function alzakGenerarInforme() {
   var pagos = window.SG_PAGOS || [];
   var SG_CATS = ['Nómina y Seguridad Social','Honorarios','Comisiones de Ventas',
     'Servicios Públicos','Gasolina','Arriendos','Compra de Equipos e Insumos',
-    'Mantenimiento y Reparaciones','Servicios Generales',
-    'Plataformas tecnológicas','Viáticos','Otros Gastos'];
+    'Mantenimiento y Reparaciones','Servicios Generales','Otros Gastos',
+    'Plataformas tecnológicas','Viáticos'];
   var totCat = {}, totalGastos = 0, totalExcl = 0, totalImptos = 0;
   SG_CATS.forEach(function(c){ totCat[c]=0; });
   pagos.forEach(function(r){
