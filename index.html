@@ -13054,7 +13054,7 @@ function renderEstadoResultados() {
   var totGas   = meses.reduce(function(a,m){return a+gasMes(m,null);},0);
   var totImp   = meses.reduce(function(a,m){return a+impMes(m);},0);
   var utilOper = totIng - totGas;
-  var utilNeta = utilOper - totImp;
+  var utilNeta = utilOper; // Impuestos son obligaciones tributarias, no restan utilidad
 
   // ── KPIs ──────────────────────────────────────────────────────────
   var colUO = utilOper>=0?'#0F6E56':'#CC1818';
@@ -13064,7 +13064,7 @@ function renderEstadoResultados() {
     +'<div style="background:#F0FDF4;border-radius:8px;padding:10px 12px"><div style="font-size:9px;font-weight:700;color:#0F6E56;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">(+) Ingresos</div><div style="font-size:17px;font-weight:700;color:#0F6E56">'+F(totIng)+'</div><div style="font-size:9px;color:#0F6E56;opacity:.7">'+FACT_R.length+' registros</div></div>'
     +'<div style="background:#FEF2F2;border-radius:8px;padding:10px 12px"><div style="font-size:9px;font-weight:700;color:#CC1818;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">(-) Gastos operac.</div><div style="font-size:17px;font-weight:700;color:#CC1818">'+F(totGas)+'</div><div style="font-size:9px;color:#CC1818;opacity:.7">'+pagos.filter(function(r){var c=(r.categoria||'').trim()||sgCatPago(r.concepto||'');return c!=="__EXCLUIR__"&&c.indexOf('EXCLUIR')!==0&&c!=="Impuestos y Cargas Fiscales";}).length+' egresos</div></div>'
     +'<div style="background:'+(utilOper>=0?'#F0FDF4':'#FEF2F2')+';border-radius:8px;padding:10px 12px;border:2px solid '+colUO+'"><div style="font-size:9px;font-weight:700;color:'+colUO+';text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">(=) Util. operac.</div><div style="font-size:17px;font-weight:700;color:'+colUO+'">'+F(utilOper)+' '+(utilOper>=0?'🟢':'🔴')+'</div><div style="font-size:9px;color:'+colUO+';opacity:.7">'+(totIng?Math.round(utilOper/totIng*100):0)+'% margen</div></div>'
-    +'<div style="background:'+(utilNeta>=0?'#EBF3FB':'#FEF2F2')+';border-radius:8px;padding:10px 12px;border:2px solid '+colUN+'"><div style="font-size:9px;font-weight:700;color:'+colUN+';text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">(=) Util. neta</div><div style="font-size:17px;font-weight:700;color:'+colUN+'">'+F(utilNeta)+' '+(utilNeta>=0?'🟢':'🔴')+'</div><div style="font-size:9px;color:'+colUN+';opacity:.7">Imptos: '+F(totImp)+'</div></div>'
+    +'<div style="background:'+(utilNeta>=0?'#EBF3FB':'#FEF2F2')+';border-radius:8px;padding:10px 12px;border:2px solid '+colUN+'"><div style="font-size:9px;font-weight:700;color:'+colUN+';text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">(=) Utilidad operacional</div><div style="font-size:17px;font-weight:700;color:'+colUN+'">'+F(utilNeta)+' '+(utilNeta>=0?'🟢':'🔴')+'</div><div style="font-size:9px;color:'+colUN+';opacity:.7">Margen: '+(totIng?Math.round(utilOper/totIng*100):0)+'%</div></div>'
     +'</div>';
 
   if (erChart) erChart.innerHTML = '';
@@ -13200,7 +13200,7 @@ function renderEstadoResultados() {
   if (totImp) {
     var impVals = meses.map(function(m){ return impMes(m); });
     html += '<tr style="background:#fafafa;border-bottom:1px solid #eee">';
-    html += '<td style="padding:6px 14px;color:#888">(−) Impuestos y cargas fiscales</td>';
+    html += '<td style="padding:6px 14px;color:#888">ℹ️ Impuestos pagados (obligaciones tributarias)</td>';
     impVals.forEach(function(v){ html += td(v, false, '#888'); });
     html += '<td style="'+colW+'color:#888">'+F(totImp)+'</td></tr>';
   }
@@ -13208,7 +13208,7 @@ function renderEstadoResultados() {
   // Utilidad neta
   var unVals = meses.map(function(m,i){ return uoVals[i]-impMes(m); });
   html += '<tr style="background:'+(utilNeta>=0?'#0F6E56':'#CC1818')+'">';
-  html += '<td style="padding:10px 14px;color:#fff;font-weight:700;font-size:13px">(=) UTILIDAD NETA</td>';
+  html += '<td style="padding:10px 14px;color:#fff;font-weight:700;font-size:13px">(=) UTILIDAD OPERACIONAL</td>';
   unVals.forEach(function(v){ html += '<td style="'+colW+'font-weight:700;font-size:13px;color:#FFD700">'+F(v)+'</td>'; });
   html += '<td style="'+colW+'font-weight:700;font-size:13px;color:#FFD700">'+F(utilNeta)+'</td></tr>';
 
@@ -17434,7 +17434,7 @@ function renderSgER() {
 
   var totalGastos = SG_ER_CATS_ORDEN.reduce(function(a,c){ return a+(totCat[c]||0); }, 0);
   var utilOper = ingresos - totalGastos;
-  var utilNeta = utilOper - totalImptos;
+  var utilNeta = utilOper; // Impuestos son obligaciones tributarias, no restan utilidad
   var colUO = utilOper >= 0 ? '#0F6E56' : '#CC1818';
   var colUN = utilNeta >= 0 ? '#0F6E56' : '#CC1818';
   var nOperativos = pagos.filter(function(r){ var c=(r.categoria||'').trim()||sgCatPago(r.concepto||''); return c!=='__EXCLUIR__'&&c!=='Impuestos y Cargas Fiscales'; }).length;
@@ -17459,7 +17459,7 @@ function renderSgER() {
     +'<div style="background:'+(utilNeta>=0?'#EBF3FB':'#FEF2F2')+';border-radius:8px;padding:10px 12px;border:2px solid '+colUN+'">'
     +'<div style="font-size:9px;font-weight:700;color:'+colUN+';text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">(=) Utilidad neta</div>'
     +'<div style="font-size:17px;font-weight:700;color:'+colUN+'">'+F(utilNeta)+' '+(utilNeta>=0?'🟢':'🔴')+'</div>'
-    +'<div style="font-size:9px;color:'+colUN+';opacity:.7">Imptos: '+F(totalImptos)+'</div></div>'
+    +'<div style="font-size:9px;color:'+colUN+';opacity:.7">Margen sobre ingresos op.</div></div>'
     +'</div>';
 
   if (!elDet) return;
@@ -17488,7 +17488,7 @@ function renderSgER() {
 
   if (totalImptos) {
     html += '<tr style="background:#fafafa;border-bottom:1px solid #f0eeec">'
-      +'<td style="padding:7px 12px;color:#888">(−) Impuestos y cargas fiscales</td>'
+      +'<td style="padding:7px 12px;color:#888">ℹ️ Impuestos pagados (obligaciones tributarias)</td>'
       +'<td style="padding:7px 12px;text-align:right;color:#888">'+F(totalImptos)+'</td>'
       +'<td></td></tr>';
   }
@@ -22344,7 +22344,7 @@ function alzakGenerarInforme() {
     totCat[cat]=(totCat[cat]||0)+val; totalGastos+=val;
   });
   var utilOper = totOper - totalGastos;
-  var utilNeta = utilOper - totalImptos;
+  var utilNeta = utilOper; // Impuestos son obligaciones tributarias, no restan utilidad
   var margenOper = totOper ? Math.round(utilOper/totOper*100) : 0;
 
   // ── Préstamos ─────────────────────────────────────────────────────
@@ -22539,8 +22539,8 @@ function alzakGenerarInforme() {
       }).join('')
     +'<div class="er-total"><span>Total Gastos Operacionales</span><span>'+fc(totalGastos)+'</span></div>'
     +'<div class="er-util '+(utilOper<0?'er-neg':'')+'"><span>(=) UTILIDAD OPERACIONAL &nbsp;·&nbsp; Margen: '+margenOper+'%</span><span>'+fc(utilOper)+'</span></div>'
-    +(totalImptos?'<div class="er-row"><span class="er-cat" style="color:#888">(−) Impuestos y cargas fiscales</span><span style="color:#888">'+fc(totalImptos)+'</span></div>':'')
-    +'<div class="er-util '+(utilNeta<0?'er-neg':'')+'"><span>(=) UTILIDAD NETA</span><span>'+fc(utilNeta)+'</span></div>'
+    +(totalImptos?'<div class="er-row"><span class="er-cat" style="color:#888">ℹ️ Impuestos pagados (obligaciones tributarias)</span><span style="color:#888">'+fc(totalImptos)+'</span></div>':'')
+    +'<div class="er-util '+(utilNeta<0?'er-neg':'')+'"><span>(=) UTILIDAD OPERACIONAL</span><span>'+fc(utilNeta)+'</span></div>'
     +'<div style="margin-top:12px;padding-top:12px;border-top:1px dashed #e0ddd8">'
     +'<div style="font-size:10px;color:#888;margin-bottom:8px">Composición de egresos operacionales:</div>'
     +'<div style="max-width:500px">'+egressBars+'</div>'
