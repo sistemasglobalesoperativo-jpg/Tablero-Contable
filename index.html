@@ -1820,7 +1820,7 @@ function alzakGetOrgActiva() {
 
 // ══════════════════════════════════════════════════════════════
 
-var GS_API_URL = 'https://script.google.com/macros/s/AKfycbwtD5ujOyRrUO0REZN917REX10f_PFZbt2dIzpH04WUn82UdxD-3hFNRn-8TYGVV4ptkA/exec';
+var GS_API_URL = 'https://script.google.com/macros/s/AKfycby_ghQnFsGZDx2lB7AYnfPE0OsXe8JOWgyDkOjOZbU1-Z9WnVbFlG5NqcP5NJqmALVd5w/exec';
 
 var GS_SYNC_ACTIVO = true;   // set false para forzar solo localStorage
 
@@ -2159,8 +2159,8 @@ document.addEventListener('keydown', function(e) {
 });
 
 // ══ SINCRONIZACIÓN COMPLETA — 3 SHEETS ══════════════════════
-var ALZAK_GS_URL = 'https://script.google.com/macros/s/AKfycbwtD5ujOyRrUO0REZN917REX10f_PFZbt2dIzpH04WUn82UdxD-3hFNRn-8TYGVV4ptkA/exec';
-var ALZAK_GS_URL_FOUNDATION = 'https://script.google.com/macros/s/AKfycbwtD5ujOyRrUO0REZN917REX10f_PFZbt2dIzpH04WUn82UdxD-3hFNRn-8TYGVV4ptkA/exec';
+var ALZAK_GS_URL = 'https://script.google.com/macros/s/AKfycby_ghQnFsGZDx2lB7AYnfPE0OsXe8JOWgyDkOjOZbU1-Z9WnVbFlG5NqcP5NJqmALVd5w/exec';
+var ALZAK_GS_URL_FOUNDATION = 'https://script.google.com/macros/s/AKfycby_ghQnFsGZDx2lB7AYnfPE0OsXe8JOWgyDkOjOZbU1-Z9WnVbFlG5NqcP5NJqmALVd5w/exec';
 
 // ── Parseo numérico robusto — maneja formato COP con puntos y comas ──
 function alzakParseNum(val) {
@@ -10691,7 +10691,7 @@ function renderResumenTablero() {
 
     + card('💸','Total costos', totalEgr, '#A32D2D','#FEF2F2',
         (window.SG_PAGOS && window.SG_PAGOS.length
-          ? window.SG_PAGOS.filter(function(r){ var c=sgCatPago(r.concepto||''); return c!=='__EXCLUIR__'&&c.indexOf('EXCLUIR')!==0; }).length+' egresos operativos'
+          ? window.SG_PAGOS.filter(function(r){ var c=(r.categoria||'').trim()||sgCatPago(r.concepto||''); return c!=='__EXCLUIR__'&&c.indexOf('EXCLUIR')!==0; }).length+' egresos operativos'
           : (GASTOS_DATA.length ? GASTOS_DATA.length+' egresos' : 'Carga facturas radicadas')),
         '')
 
@@ -13038,14 +13038,14 @@ function renderEstadoResultados() {
     var mesIdx = MESES_ORD.indexOf(mes);
     return pagos.filter(function(r){
       if(getMesNum(r) !== mesIdx+1) return false;
-      var c = sgCatPago(r.concepto||'');
+      var c = (r.categoria||'').trim() || sgCatPago(r.concepto||'');
       return cat ? c===cat : (c!=='__EXCLUIR__' && c!=='Impuestos y Cargas Fiscales');
     }).reduce(function(a,r){return a+parseFloat(r.valor||0);},0);
   }
 
   function impMes(mes) {
     var mesIdx = MESES_ORD.indexOf(mes);
-    return pagos.filter(function(r){ return getMesNum(r)===mesIdx+1 && sgCatPago(r.concepto||'')==='Impuestos y Cargas Fiscales'; })
+    return pagos.filter(function(r){ return getMesNum(r)===mesIdx+1 && ((r.categoria||'').trim()||sgCatPago(r.concepto||''))==='Impuestos y Cargas Fiscales'; })
       .reduce(function(a,r){return a+parseFloat(r.valor||0);},0);
   }
 
@@ -13062,7 +13062,7 @@ function renderEstadoResultados() {
   if (erKpis) erKpis.innerHTML =
     '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:4px">'
     +'<div style="background:#F0FDF4;border-radius:8px;padding:10px 12px"><div style="font-size:9px;font-weight:700;color:#0F6E56;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">(+) Ingresos</div><div style="font-size:17px;font-weight:700;color:#0F6E56">'+F(totIng)+'</div><div style="font-size:9px;color:#0F6E56;opacity:.7">'+FACT_R.length+' registros</div></div>'
-    +'<div style="background:#FEF2F2;border-radius:8px;padding:10px 12px"><div style="font-size:9px;font-weight:700;color:#CC1818;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">(-) Gastos operac.</div><div style="font-size:17px;font-weight:700;color:#CC1818">'+F(totGas)+'</div><div style="font-size:9px;color:#CC1818;opacity:.7">'+pagos.filter(function(r){var c=sgCatPago(r.concepto);return c!=="__EXCLUIR__"&&c!=="Impuestos y Cargas Fiscales";}).length+' egresos</div></div>'
+    +'<div style="background:#FEF2F2;border-radius:8px;padding:10px 12px"><div style="font-size:9px;font-weight:700;color:#CC1818;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">(-) Gastos operac.</div><div style="font-size:17px;font-weight:700;color:#CC1818">'+F(totGas)+'</div><div style="font-size:9px;color:#CC1818;opacity:.7">'+pagos.filter(function(r){var c=(r.categoria||'').trim()||sgCatPago(r.concepto||'');return c!=="__EXCLUIR__"&&c.indexOf('EXCLUIR')!==0&&c!=="Impuestos y Cargas Fiscales";}).length+' egresos</div></div>'
     +'<div style="background:'+(utilOper>=0?'#F0FDF4':'#FEF2F2')+';border-radius:8px;padding:10px 12px;border:2px solid '+colUO+'"><div style="font-size:9px;font-weight:700;color:'+colUO+';text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">(=) Util. operac.</div><div style="font-size:17px;font-weight:700;color:'+colUO+'">'+F(utilOper)+' '+(utilOper>=0?'🟢':'🔴')+'</div><div style="font-size:9px;color:'+colUO+';opacity:.7">'+(totIng?Math.round(utilOper/totIng*100):0)+'% margen</div></div>'
     +'<div style="background:'+(utilNeta>=0?'#EBF3FB':'#FEF2F2')+';border-radius:8px;padding:10px 12px;border:2px solid '+colUN+'"><div style="font-size:9px;font-weight:700;color:'+colUN+';text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">(=) Util. neta</div><div style="font-size:17px;font-weight:700;color:'+colUN+'">'+F(utilNeta)+' '+(utilNeta>=0?'🟢':'🔴')+'</div><div style="font-size:9px;color:'+colUN+';opacity:.7">Imptos: '+F(totImp)+'</div></div>'
     +'</div>';
@@ -13157,7 +13157,7 @@ function renderEstadoResultados() {
     html += '<tbody id="'+rid+'" style="display:none">';
     var mesIdx_map = {};
     MESES_ORD.forEach(function(m,i){ mesIdx_map[m]=i+1; });
-    var items = pagos.filter(function(r){ return sgCatPago(r.concepto||'')===cat; });
+    var items = pagos.filter(function(r){ return ((r.categoria||'').trim()||sgCatPago(r.concepto||''))===cat; });
     // Group by concepto (truncated to 40 chars)
     var byCon = {};
     items.forEach(function(r){
@@ -17437,7 +17437,7 @@ function renderSgER() {
   var utilNeta = utilOper - totalImptos;
   var colUO = utilOper >= 0 ? '#0F6E56' : '#CC1818';
   var colUN = utilNeta >= 0 ? '#0F6E56' : '#CC1818';
-  var nOperativos = pagos.filter(function(r){ var c=sgCatPago(r.concepto); return c!=='__EXCLUIR__'&&c!=='Impuestos y Cargas Fiscales'; }).length;
+  var nOperativos = pagos.filter(function(r){ var c=(r.categoria||'').trim()||sgCatPago(r.concepto||''); return c!=='__EXCLUIR__'&&c!=='Impuestos y Cargas Fiscales'; }).length;
 
   elKpi.innerHTML =
     '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:12px">'
@@ -22996,7 +22996,7 @@ function sgRenderPagosDetalle() {
   // Agrupar por categoría
   var grupos = {};
   filtrados.forEach(function(p){
-    var cat = sgCatPago(p.concepto);
+    var cat = (p.categoria||'').trim() || sgCatPago(p.concepto||'');
     if (!grupos[cat]) grupos[cat] = { items: [], total: 0 };
     grupos[cat].items.push(p);
     grupos[cat].total += p.valor || 0;
