@@ -499,7 +499,7 @@ tbody tr:hover td{background:var(--cyan-light);}
 
   <!-- Izquierda: título -->
   <div style="min-width:180px;">
-    <div style="font-size:13px;font-weight:700;color:#fff;font-family:'Montserrat',Helvetica,Arial,sans-serif;line-height:1.2">Tablero Contable SG</div>
+    <div style="font-size:13px;font-weight:700;color:#fff;font-family:'Montserrat',Helvetica,Arial,sans-serif;line-height:1.2">Tablero Contable SG <span style="font-size:9px;font-weight:400;opacity:.5;margin-left:4px">v2.9 · 30sep2026</span></div>
     <div style="margin-top:5px;position:relative;display:inline-block;">
       <select id="org-selector" onchange="alzakCambiarOrg(this.value)"
         style="appearance:none;-webkit-appearance:none;background:rgba(255,255,255,0.08);border:1.5px solid #CC1818;border-radius:8px;color:#CC1818;font-family:'Montserrat',Helvetica,Arial,sans-serif;font-size:11px;font-weight:700;padding:3px 26px 3px 10px;cursor:pointer;outline:none;min-width:170px;">
@@ -13017,8 +13017,9 @@ function renderEstadoResultados() {
 
   // ── Calcular gastos por mes y categoría ───────────────────────────
   var SG_CATS = ['Nómina y Seguridad Social','Honorarios','Comisiones de Ventas',
-    'Servicios Públicos','Arriendos','Compra de Equipos e Insumos',
-    'Mantenimiento y Reparaciones','Servicios Generales','Otros Gastos'];
+    'Servicios Públicos','Gasolina','Arriendos','Compra de Equipos e Insumos',
+    'Mantenimiento y Reparaciones','Servicios Generales',
+    'Plataformas tecnológicas','Viáticos','Otros Gastos'];
 
   function getMesNum(r) {
     var d=String(r.fecha||'');
@@ -17386,10 +17387,13 @@ var SG_ER_CATS_ORDEN = [
   'Honorarios',
   'Comisiones de Ventas',
   'Servicios Públicos',
+  'Gasolina',
   'Arriendos',
   'Compra de Equipos e Insumos',
   'Mantenimiento y Reparaciones',
   'Servicios Generales',
+  'Plataformas tecnológicas',
+  'Viáticos',
   'Otros Gastos'
 ];
 
@@ -22322,13 +22326,14 @@ function alzakGenerarInforme() {
   // ── Datos de egresos ──────────────────────────────────────────────
   var pagos = window.SG_PAGOS || [];
   var SG_CATS = ['Nómina y Seguridad Social','Honorarios','Comisiones de Ventas',
-    'Servicios Públicos','Arriendos','Compra de Equipos e Insumos',
-    'Mantenimiento y Reparaciones','Servicios Generales','Otros Gastos'];
+    'Servicios Públicos','Gasolina','Arriendos','Compra de Equipos e Insumos',
+    'Mantenimiento y Reparaciones','Servicios Generales',
+    'Plataformas tecnológicas','Viáticos','Otros Gastos'];
   var totCat = {}, totalGastos = 0, totalExcl = 0, totalImptos = 0;
   SG_CATS.forEach(function(c){ totCat[c]=0; });
   pagos.forEach(function(r){
     var cat = sgCatPago(r.concepto||''); var val = parseFloat(r.valor||0);
-    if(cat==='__EXCLUIR__'){totalExcl+=val;return;}
+    if(cat==='__EXCLUIR__'||cat.indexOf('EXCLUIR')===0){totalExcl+=val;return;}
     if(cat==='Impuestos y Cargas Fiscales'){totalImptos+=val;return;}
     totCat[cat]=(totCat[cat]||0)+val; totalGastos+=val;
   });
@@ -22834,6 +22839,8 @@ function sgCatPago(concepto) {
   // Arriendos facturados por Sr. Camilo (son intragrupo)
   if (/ARRIENDO.*CAMILO|CAMILO.*ARRIENDO|FACTURA.*CAMILO.*ARRIENDO|ARRIENDO.*FACTURA.*CAMILO/.test(c)) return '__EXCLUIR__';
   if (/CAJA MENOR\b/.test(c)) return '__EXCLUIR__';
+  // Variantes EXCLUIR adicionales del sheet
+  if (/EXCLUIR/.test(c)) return '__EXCLUIR__';
 
   // ── IMPUESTOS (van debajo de utilidad operacional) ────────────
   if (/DIAN|BIMESTRE DIAN|\bICA\b|PREDIAL|IMPUESTO.*INDUSTR|SALDO IVA|IVA.*6BIM|COMPROBANTE.*IVA|ABONO IVA|RETENCION EN LA FUENTE DIC|DEBITO POR EMBARGO|EMBARGO/.test(c)) return 'Impuestos y Cargas Fiscales';
