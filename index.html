@@ -22291,191 +22291,300 @@ function alzakGuardarParaEquipo() {
   }, 1600);
 }
 
-// ── Informe Ejecutivo ─────────────────────────────────────
+// ── Informe Ejecutivo SG ─────────────────────────────────────────────────────
 function alzakGenerarInforme() {
   var hoy = new Date();
-  var MN = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-  var fechaStr = hoy.getDate() + ' de ' + MN[hoy.getMonth()] + ' de ' + hoy.getFullYear();
+  var MESES_N = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  var fechaStr = hoy.getDate() + ' de ' + MESES_N[hoy.getMonth()] + ' de ' + hoy.getFullYear();
 
-  function fm(n) { return '$' + Math.round(n||0).toLocaleString('es-CO'); }
-  function pct(a,b) { return b ? Math.round(a/b*100) : 0; }
+  // ── Datos de facturación ───────────────────────────────────────────
+  var FACT_R  = window._FACT_R_GLOBAL || FACTURAS.filter(function(f){ return sgEsReal(f); });
+  var FACT_PR = FACTURAS.filter(function(f){ return sgMesNum(f) > SG_MES_ACTUAL; });
+  var _BRC    = {'BANCOLOMBIA':1,'SUDAMERIS':1,'DAVIVIENDA':1,'BOLD':1,'BANCOLOMBIA / EFECTIVO':1,'SUDAMERIS / EFECTIVO':1};
 
-  var totalFacturado = (typeof FACTURAS!=='undefined') ? FACTURAS.reduce(function(a,f){return a+(f.bruto||0);},0) : 0;
-  var totalCobrado   = (typeof FACTURAS!=='undefined') ? FACTURAS.filter(function(f){return f.pagada;}).reduce(function(a,f){return a+(f.total||0);},0) : 0;
-  var totalPendiente = (typeof FACTURAS!=='undefined') ? FACTURAS.filter(function(f){return !f.pagada;}).reduce(function(a,f){return a+(f.total||0);},0) : 0;
-  var nFacturas      = (typeof FACTURAS!=='undefined') ? FACTURAS.length : 0;
-  var nPagadas       = (typeof FACTURAS!=='undefined') ? FACTURAS.filter(function(f){return f.pagada;}).length : 0;
-  var recaudo        = pct(totalCobrado, totalFacturado + totalPendiente);
-
-  // Costos 2026 únicamente (FR_DATA filtrado por año)
-  var totalCostos = 0;
-  if (typeof FR_DATA!=='undefined' && FR_DATA.length)
-    totalCostos = FR_DATA.filter(function(r){
-      var fp = (r['Fecha']||'').split('/');
-      return fp.length >= 3 && parseInt(fp[2]) === 2026;
-    }).reduce(function(a,r){return a+parseFloat(r['Total (COP)']||r['Total_COP']||0);},0);
-
-  // Egresos operativos 2026 (excluyendo traslados, inversiones y DIAN)
-  var totalEgresos = 0;
-  if (typeof GASTOS_DATA!=='undefined')
-    totalEgresos = GASTOS_DATA.filter(function(r){
-      var t=(r['Tipo_Movimiento']||'').toLowerCase();
-      var c=(r['Categoria']||r['Categoría']||'').toLowerCase();
-      if (t==='traslado') return false;
-      if (c.indexOf('traslado')>=0) return false;
-      if (c.indexOf('inversion')>=0||c.indexOf('inversión')>=0) return false;
-      if (c.indexOf('obligaci')>=0&&c.indexOf('dian')>=0) return false;
-      if (c.indexOf('obligaci')>=0&&c.indexOf('tribut')>=0) return false;
-      return true;
-    }).reduce(function(a,r){return a+parseFloat(r['Total_COP']||r['Total ($)']||0);},0);
-
-  // Utilidad operacional = Ingresos 2026 - Costos radicados 2026
-  // (coincide con Estado de Resultados — NO resta egresos que son pagos de caja)
-  var utilidadOp  = totalFacturado - totalCostos;
-  var margenOp    = pct(utilidadOp, totalFacturado);
-  var margenBruto = pct(totalFacturado - totalCostos, totalFacturado);
-
-  var cajaTotal = 0;
-  if (typeof P!=='undefined' && P.length) {
-    var ul = P[P.length-1];
-    cajaTotal = (ul.sF||0)+((ul.fid&&ul.fid.sF)||0)+((ul.caja&&ul.caja.sF)||0)+((ul.bold&&ul.bold.sF)||0);
+  function esCanje2(f) {
+    var t=(f.tipo||'').toUpperCase(); var c=(f.cliente||'').toUpperCase();
+    return t.indexOf('CANJE')>=0||t.indexOf('CAMILO')>=0||t.indexOf('PHARMASER')>=0||c.indexOf('CAMILO CONTRERAS')>=0||c.indexOf('PHARMASER')>=0;
   }
-  var pruebaAcida = totalEgresos>0 ? (cajaTotal/(totalEgresos/12)).toFixed(2) : '—';
-  var cobertura   = totalEgresos>0 ? (totalFacturado/totalEgresos).toFixed(2) : '—';
 
-  var clienteMap = {};
-  if (typeof FACTURAS!=='undefined')
-    FACTURAS.forEach(function(f){clienteMap[f.cliente||'N/A']=(clienteMap[f.cliente||'N/A']||0)+(f.bruto||0);});
-  var clientesTop = Object.keys(clienteMap).sort(function(a,b){return clienteMap[b]-clienteMap[a];}).slice(0,6);
+  var facOper   = FACT_R.filter(function(f){ return !esCanje2(f); });
+  var facCanje  = FACT_R.filter(function(f){ return esCanje2(f); });
+  var facPend   = facOper.filter(function(f){ return !f.pagada; });
 
-  var semaforo = margenOp>=20?'🟢':margenOp>=0?'🟡':'🔴';
-  var analisis = margenOp>=20
-    ? 'La compañía presenta una posición financiera <strong>sólida</strong>, con margen operacional superior al 20%.'
-    : margenOp>=0
-    ? 'La compañía opera con margen positivo pero ajustado. Se recomienda acelerar el recaudo de cartera.'
-    : 'La compañía presenta <strong>pérdida operacional</strong>. Acción inmediata requerida en costos y facturación.';
+  var totIng     = FACT_R.reduce(function(a,f){return a+(f.bruto||0);},0);
+  var totOper    = facOper.reduce(function(a,f){return a+(f.bruto||0);},0);
+  var totCanje   = facCanje.reduce(function(a,f){return a+(f.bruto||0);},0);
+  var totCobrado = facOper.filter(function(f){return f.pagada;}).reduce(function(a,f){return a+(f.total||0);},0);
+  var totPend    = facPend.reduce(function(a,f){return a+(f.total||0);},0);
+  var totProy    = FACT_PR.reduce(function(a,f){return a+(f.bruto||0);},0);
+  var pctRecaudo = totOper ? Math.round(totCobrado/(totOper*1.19)*100) : 0;
 
-  var colUtil = utilidadOp>=0?'#1D9E75':'#C53030';
+  // ── Datos de egresos ──────────────────────────────────────────────
+  var pagos = window.SG_PAGOS || [];
+  var SG_CATS = ['Nómina y Seguridad Social','Honorarios','Comisiones de Ventas',
+    'Servicios Públicos','Arriendos','Compra de Equipos e Insumos',
+    'Mantenimiento y Reparaciones','Servicios Generales','Otros Gastos'];
+  var totCat = {}, totalGastos = 0, totalExcl = 0, totalImptos = 0;
+  SG_CATS.forEach(function(c){ totCat[c]=0; });
+  pagos.forEach(function(r){
+    var cat = sgCatPago(r.concepto||''); var val = parseFloat(r.valor||0);
+    if(cat==='__EXCLUIR__'){totalExcl+=val;return;}
+    if(cat==='Impuestos y Cargas Fiscales'){totalImptos+=val;return;}
+    totCat[cat]=(totCat[cat]||0)+val; totalGastos+=val;
+  });
+  var utilOper = totOper - totalGastos;
+  var utilNeta = utilOper - totalImptos;
+  var margenOper = totOper ? Math.round(utilOper/totOper*100) : 0;
 
+  // ── Préstamos ─────────────────────────────────────────────────────
+  var prest = window.PREST_DATA || [];
+  var totalPrestado=0, totalAbonado=0, saldoPrest=0;
+  prest.forEach(function(r){
+    var t=(r.tipo||'').toUpperCase(); var v=parseFloat(r.valor||0);
+    if(t==='PRESTAMO') totalPrestado+=v; else totalAbnado+=v;
+    saldoPrest = parseFloat(r.saldo_acumulado||0);
+  });
+
+  // ── Facturación mes a mes ─────────────────────────────────────────
+  var MESES_ORD = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
+  var mesData = {};
+  MESES_ORD.forEach(function(m){ mesData[m]={oper:0,canje:0,proy:0,cobrado:0,pendiente:0}; });
+  FACT_R.forEach(function(f){
+    var m=String(f.mes||f['Mes']||'').trim().toUpperCase();
+    for(var k=0;k<MESES_ORD.length;k++){ if(m.indexOf(MESES_ORD[k].substring(0,3))===0){m=MESES_ORD[k];break;} }
+    if(!mesData[m]) return;
+    if(esCanje2(f)) mesData[m].canje+=(f.bruto||0);
+    else { mesData[m].oper+=(f.bruto||0); if(f.pagada) mesData[m].cobrado+=(f.total||0); else mesData[m].pendiente+=(f.total||0); }
+  });
+  FACT_PR.forEach(function(f){
+    var m=String(f.mes||f['Mes']||'').trim().toUpperCase();
+    for(var k=0;k<MESES_ORD.length;k++){ if(m.indexOf(MESES_ORD[k].substring(0,3))===0){m=MESES_ORD[k];break;} }
+    if(mesData[m]) mesData[m].proy+=(f.bruto||0);
+  });
+
+  var mesesActivos = MESES_ORD.filter(function(m){ return mesData[m].oper||mesData[m].canje||mesData[m].proy; });
+  var maxVal = Math.max.apply(null, mesesActivos.map(function(m){ return mesData[m].oper+mesData[m].canje+mesData[m].proy; })) || 1;
+
+  function fm(v) { if(!v)return '$0'; if(Math.abs(v)>=1e9)return '$'+(v/1e9).toFixed(1)+'B'; if(Math.abs(v)>=1e6)return '$'+(v/1e6).toFixed(1)+'M'; return '$'+(v/1e3).toFixed(0)+'K'; }
+  function fc(v) { return '$'+Math.round(v).toLocaleString('es-CO').replace(/,/g,'.'); }
+  function pct(v,t){ return t?Math.round(v/t*100):0; }
+
+  // ── Gráfica de barras inline SVG ─────────────────────────────────
+  var barW = 36, barGap = 8, chartW = mesesActivos.length*(barW+barGap)+60, chartH = 160;
+  var bars = mesesActivos.map(function(mes,i){
+    var d = mesData[mes]; var x = 40 + i*(barW+barGap);
+    var hOper  = Math.round(d.oper/maxVal*120);
+    var hCanje = Math.round(d.canje/maxVal*120);
+    var hProy  = Math.round(d.proy/maxVal*120);
+    var label  = mes.substring(0,3)[0]+mes.substring(1,3).toLowerCase();
+    var out = '';
+    if(d.proy){ out += '<rect x="'+x+'" y="'+(130-hProy)+'" width="'+barW+'" height="'+hProy+'" fill="#C4B5FD" rx="2" opacity=".7"/>'; }
+    if(d.canje){ out += '<rect x="'+x+'" y="'+(130-hOper-hCanje)+'" width="'+barW+'" height="'+hCanje+'" fill="#7C3AED" rx="2" opacity=".8"/>'; }
+    if(d.oper){ out += '<rect x="'+x+'" y="'+(130-hOper)+'" width="'+barW+'" height="'+hOper+'" fill="#1A2B6B" rx="2"/>'; }
+    if(d.pendiente){ out += '<rect x="'+x+'" y="'+(130-hOper)+'" width="'+barW+'" height="'+Math.round(d.pendiente/(d.oper*1.19||1)*hOper)+'" fill="#CC1818" rx="2" opacity=".6"/>'; }
+    out += '<text x="'+(x+barW/2)+'" y="148" text-anchor="middle" font-size="9" fill="#888">'+label+'</text>';
+    if(d.oper+d.canje>0){ out += '<text x="'+(x+barW/2)+'" y="'+(130-hOper-hCanje-4)+'" text-anchor="middle" font-size="8" fill="#333">'+fm(d.oper+d.canje)+'</text>'; }
+    return out;
+  }).join('');
+  var chartSVG = '<svg width="100%" viewBox="0 0 '+Math.max(chartW,400)+' '+(chartH+20)+'" style="overflow:visible">'
+    +'<text x="10" y="14" font-size="10" fill="#888">$M</text>'
+    +bars
+    +'<line x1="40" y1="130" x2="'+(40+mesesActivos.length*(barW+barGap))+'" y2="130" stroke="#e0e0e0" stroke-width="1"/>'
+    +'</svg>';
+
+  // ── Egresos bar chart ─────────────────────────────────────────────
+  var maxG = Math.max.apply(null, SG_CATS.map(function(c){ return totCat[c]||0; })) || 1;
+  var egressBars = SG_CATS.map(function(cat,i){
+    var v = totCat[cat]||0; if(!v) return '';
+    var barLen = Math.round(v/maxG*300);
+    var COLS = ['#CC1818','#B45309','#0C447C','#0F6E56','#7C3AED','#854F0B','#166534','#9F1239','#374151'];
+    return '<div style="margin-bottom:8px">'
+      +'<div style="display:flex;justify-content:space-between;font-size:10px;color:#54504F;margin-bottom:2px"><span>'+cat+'</span><span style="font-weight:700">'+fc(v)+' ('+pct(v,totalGastos)+'%)</span></div>'
+      +'<div style="height:8px;background:#f0eeec;border-radius:4px;overflow:hidden"><div style="width:'+barLen+'px;max-width:100%;height:100%;background:'+COLS[i%COLS.length]+';border-radius:4px"></div></div>'
+      +'</div>';
+  }).join('');
+
+  // ── HTML del informe ──────────────────────────────────────────────
   var html = '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">'
-    +'<title>Informe Ejecutivo ALZAK — '+fechaStr+'</title>'
-    +'<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">'
+    +'<meta name="viewport" content="width=device-width,initial-scale=1">'
+    +'<title>Informe Ejecutivo — Sistemas Globales — '+fechaStr+'</title>'
     +'<style>'
-    +'*{box-sizing:border-box;}'
-    +'body{font-family:Montserrat,sans-serif;margin:0;background:#f4f6f9;color:#1a1a2e;}'
-    +'.header{background:linear-gradient(135deg,#1E3A5F,#0C447C 60%,#5BC8CD);color:#fff;padding:48px 64px;}'
-    +'.header h1{font-size:28px;font-weight:800;margin:0 0 6px}'
-    +'.header p{font-size:13px;opacity:.7;margin:0}'
-    +'.body{max-width:960px;margin:0 auto;padding:32px 20px}'
-    +'.card{background:#fff;border-radius:12px;padding:24px 28px;margin-bottom:20px;box-shadow:0 2px 10px rgba(0,0,0,.06)}'
-    +'.card h2{font-size:14px;font-weight:700;color:#1E3A5F;margin:0 0 16px;padding-bottom:10px;border-bottom:2px solid #e8f0fe}'
-    +'.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}'
-    +'.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}'
-    +'.kpi{background:#f8faff;border-radius:8px;padding:14px;text-align:center}'
-    +'.kpi-l{font-size:9px;font-weight:700;color:#999;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}'
-    +'.kpi-v{font-size:18px;font-weight:800}'
-    +'.kpi-s{font-size:10px;color:#aaa;margin-top:3px}'
-    +'.ind{border-radius:8px;padding:14px 16px}'
-    +'.ind.ok{background:#f0fff4;border-left:4px solid #1D9E75}'
-    +'.ind.warn{background:#fffbeb;border-left:4px solid #B7791F}'
-    +'.ind.bad{background:#fff5f5;border-left:4px solid #C53030}'
-    +'.ind-n{font-size:10px;font-weight:700;color:#666;margin-bottom:4px}'
-    +'.ind-v{font-size:20px;font-weight:800;margin-bottom:3px}'
-    +'.ind-d{font-size:10px;color:#999;line-height:1.4}'
-    +'table{width:100%;border-collapse:collapse;font-size:12px}'
-    +'th{background:#1E3A5F;color:#fff;padding:8px 12px;text-align:left;font-weight:600}'
-    +'td{padding:8px 12px;border-bottom:1px solid #f0ede8}'
-    +'tr:nth-child(even) td{background:#f8faff}'
-    +'.alerta{background:#fff3e0;border:1px solid #FFB74D;border-radius:8px;padding:12px 16px;font-size:12px;color:#E65100;margin-top:10px}'
-    +'@media print{.no-print{display:none}.card{box-shadow:none;border:1px solid #eee}body{background:#fff}}'
-    +'</style></head><body>'
+    +'*{box-sizing:border-box;margin:0;padding:0}'
+    +'body{font-family:Georgia,serif;background:#f5f4f0;color:#2D2D2D;font-size:13px}'
+    +'.page{max-width:820px;margin:0 auto;padding:20px}'
+    +'.header{background:linear-gradient(135deg,#1A2B6B,#0F6E56);color:#fff;padding:32px 36px;border-radius:12px;margin-bottom:24px}'
+    +'.header h1{font-size:26px;font-weight:700;margin-bottom:6px}'
+    +'.header p{font-size:12px;opacity:.8}'
+    +'.section{background:#fff;border-radius:10px;padding:24px;margin-bottom:18px;border:1px solid #e8e5e0}'
+    +'.section-title{font-size:14px;font-weight:700;color:#1A2B6B;border-bottom:2px solid #1A2B6B;padding-bottom:8px;margin-bottom:16px;text-transform:uppercase;letter-spacing:.05em}'
+    +'.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:8px}'
+    +'.kpi{background:#F8F7F5;border-radius:8px;padding:14px;border-left:3px solid #1A2B6B}'
+    +'.kpi-label{font-size:9px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px}'
+    +'.kpi-val{font-size:20px;font-weight:700;color:#1A2B6B;font-family:Arial,sans-serif}'
+    +'.kpi-sub{font-size:10px;color:#888;margin-top:3px}'
+    +'.kpi-sub2{font-size:10px;color:#7C3AED;margin-top:2px}'
+    +'.green{color:#0F6E56!important;border-left-color:#0F6E56!important}'
+    +'.red{color:#CC1818!important;border-left-color:#CC1818!important}'
+    +'.purple{color:#7C3AED!important;border-left-color:#7C3AED!important}'
+    +'.er-row{display:flex;justify-content:space-between;padding:7px 10px;border-radius:5px;font-size:11px;margin-bottom:3px}'
+    +'.er-cat{font-weight:600;color:#54504F}'
+    +'.er-val{font-weight:700;color:#CC1818}'
+    +'.er-total{background:#1A2B6B;color:#fff;font-weight:700;font-size:12px;padding:9px 12px;border-radius:6px;display:flex;justify-content:space-between;margin-top:6px}'
+    +'.er-util{background:#0F6E56;color:#fff;font-weight:700;font-size:13px;padding:10px 12px;border-radius:6px;display:flex;justify-content:space-between;margin-top:6px}'
+    +'.er-neg{background:#CC1818!important}'
+    +'.prest-row{display:flex;justify-content:space-between;padding:6px 10px;border-radius:5px;font-size:11px;margin-bottom:2px}'
+    +'.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:10px;color:#666;margin-top:8px}'
+    +'.legend span{display:flex;align-items:center;gap:4px}'
+    +'.legend i{display:inline-block;width:12px;height:12px;border-radius:2px}'
+    +'@media print{body{background:#fff}.page{padding:0}button{display:none!important}}'
+    +'</style></head><body><div class="page">'
+
+    // HEADER
     +'<div class="header">'
-    +'<div style="display:flex;justify-content:space-between;align-items:flex-start">'
-    +'<div><div style="font-size:10px;opacity:.5;letter-spacing:2px;margin-bottom:12px">INFORME EJECUTIVO FINANCIERO — CONFIDENCIAL</div>'
+    +'<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">'
+    +'<div>'
+    +'<div style="font-size:10px;letter-spacing:.15em;opacity:.7;margin-bottom:8px;text-transform:uppercase">Informe Ejecutivo Financiero — Confidencial</div>'
     +'<h1>Sistemas Globales Cartagena SAS</h1>'
-    +'<p>NIT 901.988.106-0 · Cartagena · Corte: '+fechaStr+' · Acumulado 2026</p></div>'
-    +'<div style="text-align:right;opacity:.6;font-size:12px">'+semaforo+' Estado general<br>'+MN[hoy.getMonth()]+' '+hoy.getFullYear()+'</div>'
-    +'</div></div>'
-    +'<div class="body">'
-    +'<div class="no-print" style="text-align:right;margin-bottom:16px">'
-    +'<button onclick="window.print()" style="background:#1E3A5F;color:#fff;border:none;border-radius:8px;padding:9px 22px;font-size:12px;font-weight:700;cursor:pointer;font-family:Montserrat,sans-serif">🖨️ Imprimir / PDF</button>'
+    +'<p>NIT 901.988.106-0 · Cartagena · Corte: '+fechaStr+' · Acumulado 2026</p>'
+    +'</div>'
+    +'<div style="text-align:right">'
+    +'<div style="font-size:11px;opacity:.8;margin-bottom:4px">Estado general</div>'
+    +'<div style="font-size:13px;font-weight:700">'+(utilOper>=0?'🟢 Positivo':'🔴 Déficit operacional')+'</div>'
+    +'<div style="font-size:10px;opacity:.7">'+MESES_N[hoy.getMonth()]+' '+hoy.getFullYear()+'</div>'
+    +'</div></div></div>'
+
+    // BOTÓN IMPRIMIR
+    +'<div style="text-align:right;margin-bottom:16px">'
+    +'<button onclick="window.print()" style="background:#1A2B6B;color:#fff;border:none;padding:10px 20px;border-radius:8px;font-size:12px;cursor:pointer;font-weight:700">🖨️ Imprimir / PDF</button>'
     +'</div>'
 
-    // Resumen
-    +'<div class="card">'
-    +'<h2>📋 Resumen Ejecutivo</h2>'
-    +'<div style="font-size:13px;color:#444;line-height:1.7">'+semaforo+' '+analisis+'<br><br>'
-    +'ALZAK ha emitido <strong>'+nFacturas+' facturas</strong> por <strong>'+fm(totalFacturado)+'</strong>. '
-    +'Cobrado: <strong>'+fm(totalCobrado)+'</strong> ('+recaudo+'%). '
-    +'Costos radicados: <strong>'+fm(totalCostos)+'</strong>. '
-    +'Utilidad operacional: <strong style="color:'+colUtil+'">'+fm(utilidadOp)+'</strong>.'
+    // 1. FACTURACIÓN — INDICADORES CLAVE
+    +'<div class="section">'
+    +'<div class="section-title">1. Indicadores Clave de Facturación</div>'
+    +'<div class="kpi-grid">'
+    +'<div class="kpi"><div class="kpi-label">Ingreso Total 2026</div><div class="kpi-val">'+fc(totIng)+'</div>'
+    +'<div class="kpi-sub">177 facturas emitidas</div>'
+    +'<div style="margin-top:8px;padding-top:8px;border-top:1px solid #e8e5e0">'
+    +'<div style="font-size:10px;color:#1A2B6B;margin-bottom:2px">📺 Operacional SG: <strong>'+fc(totOper)+'</strong> ('+pct(totOper,totIng)+'%)</div>'
+    +'<div style="font-size:10px;color:#7C3AED">🤝 Canje/Camilo/Pharmaser: <strong>'+fc(totCanje)+'</strong> ('+pct(totCanje,totIng)+'%)</div>'
+    +'</div></div>'
+    +'<div class="kpi green"><div class="kpi-label">Cobrado</div><div class="kpi-val" style="color:#0F6E56">'+fc(totCobrado)+'</div><div class="kpi-sub">'+pctRecaudo+'% de recaudo operacional</div></div>'
+    +'<div class="kpi red"><div class="kpi-label">Por Cobrar (Operacional)</div><div class="kpi-val" style="color:#CC1818">'+fc(totPend)+'</div>'
+    +'<div class="kpi-sub">'+facPend.length+' facturas operacionales pendientes</div>'
+    +'<div class="kpi-sub" style="color:#7C3AED">Canje siempre pagado (intragrupo)</div></div>'
+    +'<div class="kpi" style="border-left-color:#553C9A"><div class="kpi-label">Proyectado Restante</div><div class="kpi-val" style="color:#553C9A">'+fc(totProy)+'</div><div class="kpi-sub">'+FACT_PR.length+' facturas programadas</div></div>'
     +'</div></div>'
 
-    // KPIs
-    +'<div class="card"><h2>💰 Indicadores Clave</h2>'
-    +'<div class="grid4">'
-    +'<div class="kpi"><div class="kpi-l">Total Facturado</div><div class="kpi-v" style="color:#0C447C">'+fm(totalFacturado)+'</div><div class="kpi-s">'+nFacturas+' facturas</div></div>'
-    +'<div class="kpi"><div class="kpi-l">Cobrado</div><div class="kpi-v" style="color:#1D9E75">'+fm(totalCobrado)+'</div><div class="kpi-s">'+recaudo+'% recaudo</div></div>'
-    +'<div class="kpi"><div class="kpi-l">Por Cobrar</div><div class="kpi-v" style="color:#B7791F">'+fm(totalPendiente)+'</div><div class="kpi-s">cartera activa</div></div>'
-    +'<div class="kpi"><div class="kpi-l">Utilidad Operacional</div><div class="kpi-v" style="color:'+colUtil+'">'+fm(utilidadOp)+'</div><div class="kpi-s">margen '+margenOp+'%</div></div>'
+    // 2. GRÁFICA FACTURACIÓN MES A MES
+    +'<div class="section">'
+    +'<div class="section-title">2. Facturación Mes a Mes · Base Gravable</div>'
+    +'<div style="overflow-x:auto">'+chartSVG+'</div>'
+    +'<div class="legend">'
+    +'<span><i style="background:#1A2B6B"></i> Operacional SG</span>'
+    +'<span><i style="background:#7C3AED"></i> Canje/Camilo/Pharmaser</span>'
+    +'<span><i style="background:#CC1818;opacity:.6"></i> Pendiente de cobro</span>'
+    +'<span><i style="background:#C4B5FD"></i> Proyectado</span>'
+    +'</div>'
+    // Tabla resumen mes a mes
+    +'<table style="width:100%;border-collapse:collapse;margin-top:16px;font-size:10px">'
+    +'<thead><tr style="background:#F8F7F5">'
+    +'<th style="padding:6px 8px;text-align:left;color:#888;font-weight:700">Mes</th>'
+    +'<th style="padding:6px 8px;text-align:right;color:#888;font-weight:700">Operacional</th>'
+    +'<th style="padding:6px 8px;text-align:right;color:#888;font-weight:700">Canje</th>'
+    +'<th style="padding:6px 8px;text-align:right;color:#888;font-weight:700">Cobrado</th>'
+    +'<th style="padding:6px 8px;text-align:right;color:#888;font-weight:700">Pendiente</th>'
+    +'</tr></thead><tbody>'
+    + mesesActivos.filter(function(m){return mesData[m].oper||mesData[m].canje;}).map(function(m,i){
+        var d=mesData[m];
+        return '<tr style="background:'+(i%2===0?'#fafafa':'#fff')+';border-bottom:1px solid #f0eeec">'
+          +'<td style="padding:5px 8px;font-weight:600">'+m.charAt(0)+m.slice(1).toLowerCase()+'</td>'
+          +'<td style="padding:5px 8px;text-align:right;color:#1A2B6B;font-weight:700">'+fc(d.oper)+'</td>'
+          +'<td style="padding:5px 8px;text-align:right;color:#7C3AED">'+fc(d.canje)+'</td>'
+          +'<td style="padding:5px 8px;text-align:right;color:#0F6E56">'+fc(d.cobrado)+'</td>'
+          +'<td style="padding:5px 8px;text-align:right;color:#CC1818">'+fc(d.pendiente)+'</td>'
+          +'</tr>';
+      }).join('')
+    +'<tr style="background:#1A2B6B">'
+    +'<td style="padding:7px 8px;color:#fff;font-weight:700">TOTAL</td>'
+    +'<td style="padding:7px 8px;text-align:right;color:#FFD700;font-weight:700">'+fc(totOper)+'</td>'
+    +'<td style="padding:7px 8px;text-align:right;color:#C4B5FD;font-weight:700">'+fc(totCanje)+'</td>'
+    +'<td style="padding:7px 8px;text-align:right;color:#6EE7B7;font-weight:700">'+fc(totCobrado)+'</td>'
+    +'<td style="padding:7px 8px;text-align:right;color:#FCA5A5;font-weight:700">'+fc(totPend)+'</td>'
+    +'</tr>'
+    +'</tbody></table></div>'
+
+    // 3. ESTADO DE RESULTADOS
+    +'<div class="section">'
+    +'<div class="section-title">3. Estado de Resultados · Acumulado 2026</div>'
+    +'<div class="er-row" style="background:#F0FDF4"><span class="er-cat" style="color:#0F6E56">(+) INGRESOS OPERACIONALES SG</span><span style="font-weight:700;color:#0F6E56">'+fc(totOper)+'</span></div>'
+    +'<div class="er-row" style="background:#F5F3FF"><span class="er-cat" style="color:#7C3AED">(+) CANJE / CAMILO / PHARMASER</span><span style="font-weight:700;color:#7C3AED">'+fc(totCanje)+'</span></div>'
+    +'<div style="border-top:1px dashed #e0ddd8;margin:8px 0"></div>'
+    +'<div style="font-size:10px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;padding:0 10px">(-) Gastos Operacionales</div>'
+    + SG_CATS.map(function(cat,i){
+        var v=totCat[cat]||0; if(!v) return '';
+        return '<div class="er-row" style="background:'+(i%2===0?'#fff9f9':'#fff')+'">'
+          +'<span class="er-cat">'+cat+'</span>'
+          +'<span class="er-val">'+fc(v)+' <span style="font-weight:400;color:#aaa;font-size:9px">('+pct(v,totalGastos)+'%)</span></span></div>';
+      }).join('')
+    +'<div class="er-total"><span>Total Gastos Operacionales</span><span>'+fc(totalGastos)+'</span></div>'
+    +'<div class="er-util '+(utilOper<0?'er-neg':'')+'"><span>(=) UTILIDAD OPERACIONAL &nbsp;·&nbsp; Margen: '+margenOper+'%</span><span>'+fc(utilOper)+'</span></div>'
+    +(totalImptos?'<div class="er-row"><span class="er-cat" style="color:#888">(−) Impuestos y cargas fiscales</span><span style="color:#888">'+fc(totalImptos)+'</span></div>':'')
+    +'<div class="er-util '+(utilNeta<0?'er-neg':'')+'"><span>(=) UTILIDAD NETA</span><span>'+fc(utilNeta)+'</span></div>'
+    +'<div style="margin-top:12px;padding-top:12px;border-top:1px dashed #e0ddd8">'
+    +'<div style="font-size:10px;color:#888;margin-bottom:8px">Composición de egresos operacionales:</div>'
+    +'<div style="max-width:500px">'+egressBars+'</div>'
     +'</div></div>'
 
-    // Indicadores técnicos
-    +'<div class="card"><h2>📐 Indicadores Financieros</h2>'
-    +'<div class="grid3">'
-    +'<div class="ind '+(margenBruto>=30?'ok':margenBruto>=10?'warn':'bad')+'">'
-    +'<div class="ind-n">MARGEN BRUTO</div>'
-    +'<div class="ind-v" style="color:'+(margenBruto>=30?'#1D9E75':margenBruto>=10?'#B7791F':'#C53030')+'">'+margenBruto+'%</div>'
-    +'<div class="ind-d">Saludable: &gt;30% para consultoría</div></div>'
-    +'<div class="ind '+(margenOp>=15?'ok':margenOp>=0?'warn':'bad')+'">'
-    +'<div class="ind-n">MARGEN OPERACIONAL</div>'
-    +'<div class="ind-v" style="color:'+(margenOp>=15?'#1D9E75':margenOp>=0?'#B7791F':'#C53030')+'">'+margenOp+'%</div>'
-    +'<div class="ind-d">Eficiencia operativa neta</div></div>'
-    +'<div class="ind '+(recaudo>=80?'ok':recaudo>=50?'warn':'bad')+'">'
-    +'<div class="ind-n">ÍNDICE DE RECAUDO</div>'
-    +'<div class="ind-v" style="color:'+(recaudo>=80?'#1D9E75':recaudo>=50?'#B7791F':'#C53030')+'">'+recaudo+'%</div>'
-    +'<div class="ind-d">Óptimo: &gt;80%</div></div>'
-    +'<div class="ind '+(parseFloat(pruebaAcida)>=2?'ok':parseFloat(pruebaAcida)>=1?'warn':'bad')+'">'
-    +'<div class="ind-n">PRUEBA ÁCIDA (meses)</div>'
-    +'<div class="ind-v" style="color:'+(parseFloat(pruebaAcida)>=2?'#1D9E75':parseFloat(pruebaAcida)>=1?'#B7791F':'#C53030')+'">'+pruebaAcida+'</div>'
-    +'<div class="ind-d">Meses de caja disponible</div></div>'
-    +'<div class="ind '+(parseFloat(cobertura)>=1.5?'ok':parseFloat(cobertura)>=1?'warn':'bad')+'">'
-    +'<div class="ind-n">COBERTURA DE GASTOS</div>'
-    +'<div class="ind-v" style="color:'+(parseFloat(cobertura)>=1.5?'#1D9E75':parseFloat(cobertura)>=1?'#B7791F':'#C53030')+'">'+cobertura+'x</div>'
-    +'<div class="ind-d">Ingresos ÷ Gastos totales</div></div>'
-    +'<div class="ind '+(totalPendiente<totalFacturado*0.3?'ok':totalPendiente<totalFacturado*0.6?'warn':'bad')+'">'
-    +'<div class="ind-n">CARTERA / FACTURADO</div>'
-    +'<div class="ind-v" style="color:'+(totalPendiente<totalFacturado*0.3?'#1D9E75':totalPendiente<totalFacturado*0.6?'#B7791F':'#C53030')+'">'+pct(totalPendiente,totalFacturado)+'%</div>'
-    +'<div class="ind-d">% sin cobrar del total</div></div>'
-    +'</div></div>'
-
-    // Clientes
-    +'<div class="card"><h2>🏢 Concentración por Cliente</h2>'
-    +'<table><tr><th>Cliente</th><th>Facturado</th><th>%</th></tr>'
-    +clientesTop.map(function(c){
-      var v=clienteMap[c], p=pct(v,totalFacturado);
-      return '<tr><td><strong>'+c+'</strong></td><td>'+fm(v)+'</td>'
-        +'<td><div style="display:flex;align-items:center;gap:6px">'
-        +'<div style="background:#e8f0fe;border-radius:3px;height:6px;width:80px">'
-        +'<div style="background:#0C447C;border-radius:3px;height:6px;width:'+Math.min(p,100)+'px"></div>'
-        +'</div>'+p+'%</div></td></tr>';
-    }).join('')
-    +'</table></div>'
-
-    // Alertas
-    +'<div class="card"><h2>🚨 Alertas y Recomendaciones</h2>'
-    +(totalPendiente>0?'<div class="alerta">💰 Cartera pendiente <strong>'+fm(totalPendiente)+'</strong> — gestionar cobro activo.</div>':'')
-    +(recaudo<70?'<div class="alerta" style="margin-top:8px">📉 Recaudo bajo 70%. Revisar política de cobro.</div>':'')
-    +(utilidadOp<0?'<div class="alerta" style="background:#fdeaea;border-color:#f44336;color:#C53030;margin-top:8px">🔴 Pérdida operacional — revisar estructura de costos.</div>':'')
-    +'<div style="background:#f0fff4;border:1px solid #68D391;border-radius:8px;padding:12px 16px;font-size:12px;color:#276749;margin-top:8px">✅ Portafolio de clientes de alto valor: farmacéuticas multinacionales con contratos recurrentes.</div>'
+    // 4. CONTROL DE DEUDA
+    +'<div class="section">'
+    +'<div class="section-title">4. Control de Deuda · Sr. Camilo</div>'
+    +(prest.length===0?'<p style="color:#888;font-size:11px">Sin datos de préstamos cargados.</p>'
+    :(function(){
+      var totalPrest2=0, totalAbon2=0, saldo2=0;
+      prest.forEach(function(r){ var t=(r.tipo||'').toUpperCase(); var v=parseFloat(r.valor||0); if(t==='PRESTAMO')totalPrest2+=v; else totalAbon2+=v; saldo2=parseFloat(r.saldo_acumulado||0); });
+      var pctPagado = totalPrest2 ? Math.round(totalAbon2/totalPrest2*100) : 0;
+      return '<div class="kpi-grid" style="margin-bottom:16px">'
+        +'<div class="kpi red"><div class="kpi-label">Total prestado</div><div class="kpi-val" style="color:#CC1818">'+fc(totalPrest2)+'</div><div class="kpi-sub">Deuda base + adicionales</div></div>'
+        +'<div class="kpi green"><div class="kpi-label">Total abonado</div><div class="kpi-val" style="color:#0F6E56">'+fc(totalAbon2)+'</div><div class="kpi-sub">'+pctPagado+'% del total prestado</div></div>'
+        +'<div class="kpi red"><div class="kpi-label">Saldo pendiente</div><div class="kpi-val" style="color:#CC1818">'+fc(saldo2)+'</div><div class="kpi-sub">A la fecha del informe</div></div>'
+        +'</div>'
+        +'<div style="background:#F8F7F5;border-radius:8px;padding:12px;margin-bottom:16px">'
+        +'<div style="font-size:10px;font-weight:700;color:#888;margin-bottom:6px">Cuota mensual pactada: $5.079.306 (Deuda base $60.951.675 ÷ 12)</div>'
+        +'<div style="height:10px;background:#e0ddd8;border-radius:6px;overflow:hidden">'
+        +'<div style="width:'+Math.min(pctPagado,100)+'%;height:100%;background:#0F6E56;border-radius:6px"></div></div>'
+        +'<div style="font-size:10px;color:#0F6E56;margin-top:4px">'+pctPagado+'% pagado sobre total prestado</div>'
+        +'</div>'
+        +'<table style="width:100%;border-collapse:collapse;font-size:10px">'
+        +'<thead><tr style="background:#F8F7F5">'
+        +'<th style="padding:5px 8px;text-align:left;color:#888">Fecha</th>'
+        +'<th style="padding:5px 8px;text-align:left;color:#888">Concepto</th>'
+        +'<th style="padding:5px 8px;text-align:center;color:#888">Tipo</th>'
+        +'<th style="padding:5px 8px;text-align:right;color:#888">Valor</th>'
+        +'<th style="padding:5px 8px;text-align:right;color:#888">Saldo</th>'
+        +'</tr></thead><tbody>'
+        + prest.map(function(r,i){
+            var esP=(r.tipo||'').toUpperCase()==='PRESTAMO';
+            return '<tr style="background:'+(i%2===0?'#fafafa':'#fff')+';border-bottom:1px solid #f0eeec">'
+              +'<td style="padding:4px 8px;color:#888">'+r.fecha+'</td>'
+              +'<td style="padding:4px 8px;color:'+(esP?'#CC1818':'#54504F')+';font-weight:'+(esP?'700':'400')+';max-width:200px;overflow:hidden;text-overflow:ellipsis">'+String(r.concepto||'').substring(0,55)+'</td>'
+              +'<td style="padding:4px 8px;text-align:center"><span style="font-size:8px;font-weight:700;padding:2px 6px;border-radius:8px;background:'+(esP?'#FEE2E2':'#D1FAE5')+';color:'+(esP?'#CC1818':'#0F6E56')+'">'+r.tipo+'</span></td>'
+              +'<td style="padding:4px 8px;text-align:right;font-weight:700;color:'+(esP?'#CC1818':'#0F6E56')+'">'+fc(parseFloat(r.valor||0))+'</td>'
+              +'<td style="padding:4px 8px;text-align:right;color:#1A2B6B;font-weight:600">'+fc(parseFloat(r.saldo_acumulado||0))+'</td>'
+              +'</tr>';
+          }).join('')
+        +'</tbody></table>';
+    })())
     +'</div>'
 
-    +'<div style="text-align:center;padding:16px;font-size:10px;color:#bbb">Informe generado automáticamente · '+fechaStr+' · Confidencial Sistemas Globales Cartagena SAS</div>'
-    +'</div></html>';
+    // FOOTER
+    +'<div style="text-align:center;padding:20px;color:#aaa;font-size:10px;border-top:1px solid #e8e5e0;margin-top:8px">'
+    +'Sistemas Globales Cartagena SAS · NIT 901.988.106-0 · Informe generado el '+fechaStr+' · Uso interno y confidencial'
+    +'</div>'
+    +'</div></body></html>';
 
-  var v = window.open('', '_blank', 'width=1100,height=820,scrollbars=yes');
-  if (v) { v.document.write(html); v.document.close(); }
-  else mostrarToast('⚠️ Permite ventanas emergentes en Chrome para ver el informe', '#993C1D', 4000);
+  var w = window.open('','_blank','width=900,height=700,scrollbars=yes');
+  if (w) { w.document.write(html); w.document.close(); }
+  else mostrarToast('⚠️ Permite ventanas emergentes para ver el informe.');
 }
 
 function alzakSyncDrive() {
