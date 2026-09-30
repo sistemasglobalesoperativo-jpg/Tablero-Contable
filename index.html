@@ -13001,24 +13001,42 @@ function renderEstadoResultados() {
   var meses = MESES_ORD.filter(function(m){ return mesesConDatos[m]; });
 
   // ── Calcular ingresos por mes y grupo ─────────────────────────────
-  function esCanje(f) {
+  function esPharmaser(f) {
+    var tipo = (f.tipo||'').toUpperCase();
+    var cli  = (f.cliente||'').toUpperCase();
+    return tipo.indexOf('PHARMASER')>=0 || cli.indexOf('PHARMASER')>=0;
+  }
+  function esCamiloCanje(f) {
     var tipo = (f.tipo||'').toUpperCase();
     var cli  = (f.cliente||'').toUpperCase();
     return tipo.indexOf('CANJE')>=0 || tipo.indexOf('CAMILO')>=0 ||
-           tipo.indexOf('PHARMASER')>=0 || cli.indexOf('CAMILO CONTRERAS')>=0 ||
-           cli.indexOf('PHARMASER')>=0;
+           cli.indexOf('CAMILO CONTRERAS')>=0;
+  }
+  function esCanje(f) {
+    return esCamiloCanje(f) || esPharmaser(f);
   }
 
+  // Ingreso real SG por grupo:
+  // - FESG / Banco / Efectivo: 100% (excluye Pharmaser y Canje/Camilo)
+  // - Pharmaser: 10% del bruto (honorarios de administración SG)
+  // - Canje/Camilo: $0 (intragrupo, no es ingreso real de caja)
   function ingMes(mes, grp) {
+    var PHAR_PCT = 0.10;
     return FACT_R.filter(function(f){
       var fm = String(f.mes||f['Mes']||'').trim().toUpperCase();
       if(fm.indexOf(mes.substring(0,3)) !== 0 && fm !== mes) return false;
-      if(grp==='canje')  return esCanje(f);
-      if(grp==='fesg')   return !esCanje(f) && String(f.num||'').toUpperCase().indexOf('FESG')===0;
-      if(grp==='banco'){  var n=String(f.num||'').toUpperCase();var b=String(f.banco||'').toUpperCase();return !esCanje(f)&&(n===''||n==='NAN'||n==='EFECTIVO')&&_BRC[b]; }
-      if(grp==='efec'){   var n=String(f.num||'').toUpperCase();var b=String(f.banco||'').toUpperCase();return !esCanje(f)&&(n===''||n==='NAN'||n==='EFECTIVO')&&!_BRC[b]; }
+      if(grp==='pharmaser') return esPharmaser(f);
+      if(grp==='canje')     return esCamiloCanje(f);
+      if(grp==='fesg')      return !esCanje(f) && String(f.num||'').toUpperCase().indexOf('FESG')===0;
+      if(grp==='banco'){    var n=String(f.num||'').toUpperCase();var b=String(f.banco||'').toUpperCase();return !esCanje(f)&&(n===''||n==='NAN'||n==='EFECTIVO')&&_BRC[b]; }
+      if(grp==='efec'){     var n=String(f.num||'').toUpperCase();var b=String(f.banco||'').toUpperCase();return !esCanje(f)&&(n===''||n==='NAN'||n==='EFECTIVO')&&!_BRC[b]; }
       return true;
-    }).reduce(function(a,f){return a+(f.bruto||0);},0);
+    }).reduce(function(a,f){
+      var base = f.bruto||0;
+      if(grp==='pharmaser') return a + base * PHAR_PCT;
+      if(esCamiloCanje(f))  return a; // Canje/Camilo: $0
+      return a + base;
+    },0);
   }
 
   // ── Calcular gastos por mes y categoría ───────────────────────────
@@ -13050,7 +13068,10 @@ function renderEstadoResultados() {
   }
 
   // Acumulados
-  var totIng   = meses.reduce(function(a,m){return a+ingMes(m,'all');},0);
+  // Total ingresos reales = FESG + banco + efectivo + 10% Pharmaser (sin Canje/Camilo)
+  var totIng   = meses.reduce(function(a,m){
+    return a + ingMes(m,'fesg') + ingMes(m,'banco') + ingMes(m,'efec') + ingMes(m,'pharmaser');
+  },0);
   var totGas   = meses.reduce(function(a,m){return a+gasMes(m,null);},0);
   var totImp   = meses.reduce(function(a,m){return a+impMes(m);},0);
   var utilOper = totIng - totGas;
@@ -13095,10 +13116,11 @@ function renderEstadoResultados() {
 
   // Sub-grupos de ingreso desplegables
   var ingGrups = [
-    {key:'fesg',  label:'🧾 Factura electrónica (FESG)', color:'#1A2B6B'},
-    {key:'banco', label:'🏦 Sin factura · ingresó a banco', color:'#0F6E56'},
-    {key:'efec',  label:'💵 Efectivo puro', color:'#CC1818'},
-    {key:'canje', label:'🤝 Canje · Camilo · Pharmaser', color:'#7C3AED'}
+    {key:'fesg',      label:'🧾 Factura electrónica (FESG)',         color:'#1A2B6B'},
+    {key:'banco',     label:'🏦 Sin factura · ingresó a banco',      color:'#0F6E56'},
+    {key:'efec',      label:'💵 Efectivo puro',                      color:'#CC1818'},
+    {key:'pharmaser', label:'💊 Pharmaser · 10% adm. (ingreso real)',color:'#7C3AED'},
+    {key:'canje',     label:'🔄 Canje · Camilo (intragrupo · $0 real)',color:'#AAAAAA'}
   ];
 
   ingGrups.forEach(function(grp) {
@@ -13135,7 +13157,10 @@ function renderEstadoResultados() {
   });
 
   // Total ingresos
-  var ingVals = meses.map(function(m){ return ingMes(m,'all'); });
+  // Total ingresos reales por mes (excluye Canje/Camilo, incluye 10% Pharmaser)
+  var ingVals = meses.map(function(m){
+    return ingMes(m,'fesg') + ingMes(m,'banco') + ingMes(m,'efec') + ingMes(m,'pharmaser');
+  });
   html += '<tr style="background:#1A2B6B">';
   html += '<td style="padding:7px 14px;color:#fff;font-weight:700">Total Ingresos</td>';
   ingVals.forEach(function(v){ html += '<td style="'+colW+'font-weight:700;color:#FFD700">'+F(v)+'</td>'; });
