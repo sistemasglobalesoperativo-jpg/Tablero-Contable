@@ -1766,7 +1766,7 @@ var ALZAK_ORGS = {
     headerBg:     '#54504F',
     facturacion:  '1YFav2bStziF-VutI0G3Ee53SOBr980wqU6V4jFwVKrE',
     radicadas:    '11BsR53WDybJofMoe7CJwR9NX-C6VnUpCRUPxUqrZoNY',
-    egresos:      '18V75KBOHuDt2fYxE5cFC82bffTtVFuxPj3LbAKz-JtM'
+    egresos:      '11BsR53WDybJofMoe7CJwR9NX-C6VnUpCRUPxUqrZoNY'
   },
   'FOUNDATION': {
     nombre:       'Sistemas Globales Cartagena SAS',
@@ -1775,7 +1775,7 @@ var ALZAK_ORGS = {
     headerBg:     '#54504F',
     facturacion:  '1YFav2bStziF-VutI0G3Ee53SOBr980wqU6V4jFwVKrE',
     radicadas:    '11BsR53WDybJofMoe7CJwR9NX-C6VnUpCRUPxUqrZoNY',
-    egresos:      '18V75KBOHuDt2fYxE5cFC82bffTtVFuxPj3LbAKz-JtM'
+    egresos:      '11BsR53WDybJofMoe7CJwR9NX-C6VnUpCRUPxUqrZoNY'
   }
 };
 
@@ -2244,11 +2244,12 @@ function alzakCargarDatosPrincipal(url, callback) {
       if (data.pagos_prog && data.pagos_prog.length) {
         window.SG_PAGOS = data.pagos_prog.map(function(r){
           return {
-            item:    String(r['ITEM']||''),
-            concepto:String(r['CONCEPTO']||''),
-            valor:   alzakParseNum(r['VALOR']||0),
-            fecha:   String(r['DIA DE PAGO']||''),
-            fuente:  String(r['FUENTE']||r['FUENTE ']||'').trim()
+            item:      String(r['ITEM']||''),
+            concepto:  String(r['CONCEPTO']||''),
+            valor:     alzakParseNum(r['VALOR']||0),
+            fecha:     String(r['DIA DE PAGO']||''),
+            fuente:    String(r['FUENTE']||r['FUENTE ']||'').trim(),
+            categoria: String(r['Categoría']||r['CATEGORIA']||r['Categoria']||r['Sección']||r['Categoría ']||'').trim()
           };
         });
         if (typeof sgRenderPagos === 'function') setTimeout(sgRenderPagos, 50);
@@ -10508,16 +10509,21 @@ function renderResumenTablero() {
     return true;
   }
 
-  // Costos del resumen = FR_DATA 2026 si disponible, sino GASTOS_DATA operativos
-  // Siempre filtrar por año actual (2026) igual que el P&L
+  // Total Costos SG = todo lo que sale de la empresa excepto traslados, devoluciones y utilidades socio
+  // Incluye: gastos operacionales + impuestos (todo lo que es un costo real)
   var totalEgr;
-  if (typeof FR_DATA !== 'undefined' && FR_DATA.length) {
+  if (window.SG_PAGOS && window.SG_PAGOS.length) {
+    totalEgr = window.SG_PAGOS.filter(function(r){
+      var cat = (r.categoria||r['Categoría']||r['CATEGORIA']||r['Categoria']||'').trim() || sgCatPago(r.concepto||'');
+      // Excluir solo lo que no es costo real: traslados, devoluciones, utilidades socio
+      if (cat === '__EXCLUIR__' || cat.indexOf('EXCLUIR') === 0) return false;
+      return true; // Todo lo demás ES un costo: operacionales + impuestos
+    }).reduce(function(a,r){ return a + parseFloat(r.valor||0); }, 0);
+  } else if (typeof FR_DATA !== 'undefined' && FR_DATA.length) {
     totalEgr = FR_DATA.filter(function(r){
-      // Solo año 2026
       var fp = (r['Fecha']||'').split('/');
       if (fp.length < 3) return false;
       if ((fp[2]||'').substring(0,4) !== '2026') return false;
-      // Excluir proyectados (meses futuros)
       if (typeof frEsProyectado === 'function' && frEsProyectado(r)) return false;
       return frEsGastoOpPL(r);
     }).reduce(function(a,r){
@@ -10528,7 +10534,7 @@ function renderResumenTablero() {
   } else if (GASTOS_DATA.length) {
     totalEgr = GASTOS_DATA.filter(esGastoOperativo).reduce(function(a,r){ return a+parseFloat(r['Total_COP']||0); }, 0);
   } else {
-    totalEgr = 0; // Sin datos cargados
+    totalEgr = 0;
   }
 
   var totalEgrOblig = GASTOS_DATA.filter(function(r){ return !esGastoOperativo(r); }).reduce(function(a,r){ return a+parseFloat(r['Total_COP']||0); }, 0);
@@ -10683,9 +10689,9 @@ function renderResumenTablero() {
           +'</div>';
       })()
 
-    + card('💸','Total costos',      totalEgr,   '#A32D2D','#FEF2F2',
-        (typeof FR_DATA!=='undefined'&&FR_DATA.length
-          ? FR_DATA.filter(function(r){var fp=(r['Fecha']||'').split('/');return fp.length>=3&&(fp[2]||'').substring(0,4)==='2026'&&frEsGastoOpPL(r);}).length+' facturas radicadas 2026'
+    + card('💸','Total costos', totalEgr, '#A32D2D','#FEF2F2',
+        (window.SG_PAGOS && window.SG_PAGOS.length
+          ? window.SG_PAGOS.filter(function(r){ var c=sgCatPago(r.concepto||''); return c!=='__EXCLUIR__'&&c.indexOf('EXCLUIR')!==0; }).length+' egresos operativos'
           : (GASTOS_DATA.length ? GASTOS_DATA.length+' egresos' : 'Carga facturas radicadas')),
         '')
 
@@ -17413,7 +17419,7 @@ function renderSgER() {
   SG_ER_CATS_ORDEN.forEach(function(c){ totCat[c]=0; itemsCat[c]=[]; });
 
   pagos.forEach(function(r) {
-    var cat = sgCatPago(r.concepto||'');
+    var cat = (r.categoria||r['Categoría']||r['CATEGORIA']||r['Categoria']||'').trim() || sgCatPago(r.concepto||'');
     var val = parseFloat(r.valor||0);
     if (cat === '__EXCLUIR__') { totalExcluido += val; return; }
     if (cat === 'Impuestos y Cargas Fiscales') { totalImptos += val; return; }
@@ -22332,7 +22338,7 @@ function alzakGenerarInforme() {
   var totCat = {}, totalGastos = 0, totalExcl = 0, totalImptos = 0;
   SG_CATS.forEach(function(c){ totCat[c]=0; });
   pagos.forEach(function(r){
-    var cat = sgCatPago(r.concepto||''); var val = parseFloat(r.valor||0);
+    var cat = (r.categoria||r['Categoría']||r['CATEGORIA']||r['Categoria']||'').trim() || sgCatPago(r.concepto||''); var val = parseFloat(r.valor||0);
     if(cat==='__EXCLUIR__'||cat.indexOf('EXCLUIR')===0){totalExcl+=val;return;}
     if(cat==='Impuestos y Cargas Fiscales'){totalImptos+=val;return;}
     totCat[cat]=(totCat[cat]||0)+val; totalGastos+=val;
@@ -22888,7 +22894,7 @@ function sgRenderPagosPie() {
   // Agrupar por categoría (excluir __EXCLUIR__ e impuestos)
   var cats = {}, total = 0;
   pagos.forEach(function(r){
-    var cat = sgCatPago(r.concepto||'');
+    var cat = (r.categoria||r['Categoría']||r['CATEGORIA']||r['Categoria']||'').trim() || sgCatPago(r.concepto||'');
     if (cat === '__EXCLUIR__' || cat === 'Impuestos y Cargas Fiscales') return;
     var v = parseFloat(r.valor||0);
     cats[cat] = (cats[cat]||0) + v;
