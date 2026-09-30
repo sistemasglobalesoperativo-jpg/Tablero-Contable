@@ -22582,9 +22582,34 @@ function alzakGenerarInforme() {
     +'</div>'
     +'</div></body></html>';
 
-  var w = window.open('','_blank','width=900,height=700,scrollbars=yes');
-  if (w) { w.document.write(html); w.document.close(); }
-  else mostrarToast('⚠️ Permite ventanas emergentes para ver el informe.');
+  // Mostrar en modal iframe dentro de la misma página
+  var modalId = 'sg-informe-modal';
+  var existing = document.getElementById(modalId);
+  if (existing) existing.remove();
+
+  var modal = document.createElement('div');
+  modal.id = modalId;
+  modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.6);z-index:99999;display:flex;flex-direction:column';
+
+  var toolbar = document.createElement('div');
+  toolbar.style.cssText = 'background:#1A2B6B;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0';
+  toolbar.innerHTML = '<span style="color:#fff;font-weight:700;font-size:13px">📊 Informe Ejecutivo — Sistemas Globales Cartagena SAS</span>'
+    +'<div style="display:flex;gap:8px">'
+    +'<button onclick="var f=document.getElementById(\'sg-informe-frame\');var w=f.contentWindow;w.print();" style="background:#0F6E56;color:#fff;border:none;padding:7px 14px;border-radius:6px;font-size:11px;cursor:pointer;font-weight:700">🖨️ Imprimir / PDF</button>'
+    +'<button onclick="document.getElementById(\'sg-informe-modal\').remove()" style="background:#CC1818;color:#fff;border:none;padding:7px 14px;border-radius:6px;font-size:11px;cursor:pointer;font-weight:700">✕ Cerrar</button>'
+    +'</div>';
+
+  var iframe = document.createElement('iframe');
+  iframe.id = 'sg-informe-frame';
+  iframe.style.cssText = 'flex:1;border:none;background:#fff';
+
+  modal.appendChild(toolbar);
+  modal.appendChild(iframe);
+  document.body.appendChild(modal);
+
+  iframe.contentDocument.open();
+  iframe.contentDocument.write(html);
+  iframe.contentDocument.close();
 }
 
 function alzakSyncDrive() {
